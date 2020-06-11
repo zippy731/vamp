@@ -25,20 +25,42 @@ Meant for use with OsciStudio [OsciStudio](https://oscilloscopemusic.com/oscistu
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  _flat meshes are the same meshes, but with vertices remapped onto the flat XY plane.
 
+## Using with Oscistudio
+Recommended workflow is: 
+- Create objects and camera animation in blender
+- Simplify origin meshes wherever possible. SAVE your work!
+- Enable VAMP, adjust settings to optimize final mesh.
+- Hide all objects in scene except for _flatSliced and _flatSilhouette.
+- Connect to Oscistudio, confirm that mesh is visible.
+- Send Animation to Oscistudio
+**Note:** VAMP currently only works with Blender 2.79, and has been tested extensively with Oscistudio 5.5.
+
 ## Settings:
-- Ind Sil Mode: Normal silhouette mode takes all meshes, combines them, then calculates an overall silhouette.  Ind Sil mode will calculate silhouettes for each object in the group.
-- Freestyle: Normal mode will display ALL visible edges when calculating _slicedFinal.  Freestyle mode will display only those edges which have been marked as Freestyle Edges in mesh edit.  Useful for simplifying results while maintaining some form.
-- Crop: Normal mode will display all mesh elements visible from camera location. Crop mode will excude objects which are not strictly visible in camera view.  Useful for simplifying complex scenes.
-- VAMP Target: The name of the group to be vamp'd
-- Output Scale: Changes the size of the _flatSliced and _flat_Silhouette meshes
-- Vertex Limit: Limits the size of the meshes to be vamp'd.  Can be increased, but will affect performance.
-- Cuts per edge: When analyzing, how many subedges should be created for each edge? Higher number gets better results, at the expense of performance.
-- Min length: the minimum length for any subedge.  This avoids very small source edges being subdivided.
-- Raycast Distance: how far will the raycasting go (in blender units) for visibility testing. Make sure this is large enough to span the distance from the camera to the furthest vertex on the origin meshes.
-- Hit Test Offset: the raycasting algorithm requires a slight offset factor when checking for visibility of vertices.  Should be very small, but not zero.  If your results are including too many small vertices that should be hidden, reduce this factor.
-- Denoise: This is a post-process of just the _flat meshes.  Will remove small edges whose length is below the threshold value.
-- Denoise Limit: The minimum length allowed for edges in final _flat meshes.  Edges below this length (aka noise) will be filtered out.
-- Denoise Pct: The proportion of noise edges which will be removed. 1.0 is all of those edges, smaller proportions can make an interesting shading effect by retaining some short edges.
+**Ind Sil Mode -**  Normal silhouette mode takes all meshes, combines them, then calculates an overall silhouette.  Ind Sil mode will calculate silhouettes for each object in the group.
+
+**Freestyle -**  Normal mode will display ALL visible edges when calculating _slicedFinal.  Freestyle mode will display only those edges which have been marked as Freestyle Edges in mesh edit.  Useful for simplifying results while maintaining some form.
+
+**Crop -** Normal mode will display all mesh elements visible from camera location. Crop mode will excude objects which are not strictly visible in camera view.  Useful for simplifying complex scenes.
+
+**VAMP Target -**  The name of the group of meshes to be vamp'd
+
+**Output Scale -**  Changes the size of the _flatSliced and _flat_Silhouette meshes
+
+**Vertex Limit -**  Limits the size of the meshes to be vamp'd.  Can be increased, but will affect performance.
+
+**Cuts per edge -**  When analyzing, how many subedges should be created for each edge? Higher number gets better results, at the expense of performance.
+
+**Min length -** The minimum length for any subedge.  This avoids very small source edges being subdivided.
+
+**Raycast Distance -**  How far will the raycasting go (in blender units) for visibility testing. Make sure this is large enough to span the distance from the camera to the furthest vertex on the origin meshes.
+
+**Hit Test Offset -**  The raycasting algorithm requires a slight offset factor when checking for visibility of vertices.  Should be very small, but not zero.  If your results are including too many small vertices that should be hidden, reduce this factor.
+
+**Denoise -** This is a post-process of just the _flat meshes.  Will remove small edges whose length is below the threshold value.
+
+**Denoise Limit -** The minimum length allowed for edges in final _flat meshes.  Edges below this length (aka noise) will be filtered out.
+
+**Denoise Pct** The proportion of noise edges which will be removed. 1.0 is all of those edges, smaller proportions can make an interesting shading effect by retaining some short edges.
 
 ### Cautions & FAQs:
 - VAMP is meant for relatively simple meshes.  Complex meshes (thousands of vertices) will probably choke it.  Save your work!
@@ -51,7 +73,7 @@ VAMP takes input meshes, then subdivides edges into smaller subedges.  Using ray
    4. the Vertex Limit is set higher than the number of vertices in your meshes
    
 ### Installing VAMP
-- VAMP is a blender plugin, written for use with Blender 2.79.  Currently will not work with Blender 2.8x, but a 2.8x version is planned.
+- VAMP is a Blender plugin, written for use with Blender 2.79.  Currently will not work with Blender 2.8x, but a 2.8x version is planned.
 - To install, 
   - Download vamp_279.zip and save to your desktop.  
   - Within Blender, go to User Preferences, Add-ons, then select Install Add-on from File.  
