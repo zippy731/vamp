@@ -1,7 +1,6 @@
-# vamp
-Vector Art Motion Processor - Blender 2.79 Python add-in to remove hidden edges from meshes
+<img src="https://i.imgur.com/vCVdnQ2.jpg">
 
-Meant for use with OsciStudio [OsciStudio](https://oscilloscopemusic.com/oscistudio.php) for making [Oscilloscope Music](https://www.youtube.com/c/ChrisAllenMusic), but may be useful otherwise!
+VAMP is meant for use with OsciStudio [OsciStudio](https://oscilloscopemusic.com/oscistudio.php) for making [Oscilloscope Music](https://www.youtube.com/c/ChrisAllenMusic), but may be useful otherwise!
 
 ### Inputs:
 - Blender mesh(es) to be processed.
