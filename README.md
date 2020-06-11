@@ -31,9 +31,9 @@ Recommended workflow is:
 - Simplify origin meshes wherever possible. SAVE your work!
 - Enable VAMP, adjust settings to optimize final mesh.
 - Hide all objects in scene except for _flatSliced and _flatSilhouette.
-- Connect to Oscistudio, confirm that mesh is visible.
+- Connect to Oscistudio, confirm that mesh is visible. Oscistudio default view should display _flat meshes cleanly.
 - Send Animation to Oscistudio
-**Note:** VAMP currently only works with Blender 2.79, and has been tested extensively with Oscistudio 5.5.
+**Note:** VAMP currently only works with Blender 2.79, and has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.
 
 ## Settings:
 **Ind Sil Mode -**  Normal silhouette mode takes all meshes, combines them, then calculates an overall silhouette.  Ind Sil mode will calculate silhouettes for each object in the group.
