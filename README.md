@@ -4,15 +4,15 @@ Vector Art Motion Processor - Blender 2.79 Python add-in to remove hidden edges 
 Meant for use with OsciStudio [OsciStudio](https://oscilloscopemusic.com/oscistudio.php) for making [Oscilloscope Music](https://www.youtube.com/c/ChrisAllenMusic), but may be useful otherwise!
 
 ### Inputs:
-- blender mesh(es) to be processed.
-- blender camera
+- Blender mesh(es) to be processed.
+- Blender camera
  
 ### Outputs:
-- processed meshes reflecting visible edges and visible silhouette, from camera perspective
+- Processed meshes, reflecting visible edges and visible silhouette from camera perspective
  
 ### How to Use:
-- create blender file with meshes and an active camera
-- select meshes of interest, create new group
+- Create blender file with meshes and an active camera
+- Select meshes of interest, create new group
 - In VAMP control panel (under Render properties settings):
   - Update VAMP Target with name of new group 
 
@@ -31,7 +31,7 @@ Recommended workflow is:
 - Simplify origin meshes wherever possible. SAVE your work!
 - Enable VAMP, adjust settings to optimize final mesh.
 - Hide all objects in scene except for _flatSliced and _flatSilhouette.
-- Connect to Oscistudio, confirm that mesh is visible. Oscistudio default view should display _flat meshes cleanly.
+- Connect to Oscistudio, confirm that mesh is visible. Oscistudio default un-rotated view should display _flat meshes cleanly.
 - Send Animation to Oscistudio
 **Note:** VAMP currently only works with Blender 2.79, and has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.
 
