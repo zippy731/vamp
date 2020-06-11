@@ -32,6 +32,7 @@ Recommended workflow is:
 - Hide all objects in scene except for _flatSliced and _flatSilhouette.
 - Connect to Oscistudio, confirm that mesh is visible. Oscistudio default un-rotated view should display _flat meshes cleanly.
 - Send Animation to Oscistudio
+
 **Note:** VAMP currently only works with Blender 2.79, and has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.
 
 ## Settings:
