@@ -21,6 +21,8 @@ VAMP is meant for use with [OsciStudio](https://oscilloscopemusic.com/oscistudio
     - _flatSliced and flatSilhouette are remapped versions of the above meshes, translated onto the XY plane
   - **Turn On VAMP** will **VAMP ONCE** for every frame change in the timeline.
 
+### Tutorial Video:  https://youtu.be/9H-l_qkF8OI
+
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  _flat meshes are the same meshes, but with vertices remapped onto the flat XY plane.
 
