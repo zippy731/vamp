@@ -1,6 +1,6 @@
 <img src="https://i.imgur.com/vCVdnQ2.jpg">
 
-VAMP is meant for use with [OsciStudio](https://oscilloscopemusic.com/oscistudio.php) for making [Oscilloscope Music](https://www.youtube.com/c/ChrisAllenMusic), but may be useful otherwise!
+VAMP generates mesh silhouettes, and removes hidden lines.  Has features similar to Blender Freestyle, but is dynamic (i.e. live, not only render-time.)  VAMP was built for use with [OsciStudio](https://oscilloscopemusic.com/oscistudio.php) for making [Oscilloscope Music](https://www.youtube.com/c/ChrisAllenMusic), but may be useful otherwise!
 
 ### Inputs:
 - Blender mesh(es) to be processed.
@@ -11,13 +11,13 @@ VAMP is meant for use with [OsciStudio](https://oscilloscopemusic.com/oscistudio
  
 ### How to Use:
 - Create blender file with meshes and an active camera
-- Select meshes of interest, create new group
+- Select meshes of interest, create new collection
 - In VAMP control panel (under Render properties settings):
-  - Update VAMP Target with name of new group 
+  - Update VAMP Target with name of new collection 
 
   - Click **VAMP ONCE**.  Vamp will create four new meshes:
-    - _slicedFinal is all visible edges from original mesh group
-    - _silhouetteFinal is just the silhouette from original mesh group
+    - _slicedFinal is all visible edges from original mesh collection
+    - _silhouetteFinal is just the silhouette from original mesh collection
     - _flatSliced and flatSilhouette are remapped versions of the above meshes, translated onto the XY plane
   - **Turn On VAMP** will **VAMP ONCE** for every frame change in the timeline.
 
@@ -35,16 +35,24 @@ Recommended workflow is:
 - Connect to Oscistudio, confirm that mesh is visible. Oscistudio default un-rotated view should display _flat meshes cleanly.
 - Send Animation to Oscistudio
 
-**Note:** VAMP currently only works with Blender 2.79, and has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.
+**Note:** There are two versions of VAMP. One works with Blender 2.79, and the other is meant for Blender 2.8x.  It has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.
 
 ## Settings:
 **Ind Sil Mode -**  Normal silhouette mode takes all meshes, combines them, then calculates an overall silhouette.  Ind Sil mode will calculate silhouettes for each object in the group.
 
+**Crop Options-** 
+- None - fastest, and will display all mesh elements.  If some objects are behind the camera, will cause troubles.  
+- Front -  all objects in front of the camera plane, regardless of whether they're visible within the camera frame.  
+- Frame - dislpay ONLY objects visible from camera location.  
+
 **Freestyle -**  Normal mode will display ALL visible edges when calculating _slicedFinal.  Freestyle mode will display only those edges which have been marked as Freestyle Edges in mesh edit.  Useful for simplifying results while maintaining some form.
 
-**Crop -** Normal mode will display all mesh elements visible from camera location. Crop mode will excude objects which are not strictly visible in camera view.  Useful for simplifying complex scenes.
+**Freestyle Crease -** When Freestyle is selected, will also include all edges with angles sharper than the indicated angle.  Intended to behave like [Freestyle crease mode](https://docs.blender.org/manual/en/latest/render/freestyle/parameter_editor/line_style/modifiers/alpha/crease_angle.html) 
 
-**VAMP Target -**  The name of the group of meshes to be vamp'd
+**Lim** - If using Freestyle crease mode, set the angle limit to flag creases
+
+
+**VAMP Target -**  The name of the Collection of meshes to be vamp'd
 
 **Output Scale -**  Changes the size of the _flatSliced and _flat_Silhouette meshes
 
@@ -70,18 +78,20 @@ Recommended workflow is:
 - Learn to use VAMP starting with small files.
 - If VAMP is not working, make sure 
    1. you have an active camera, 
-   2. the meshes to be vamp'd are in a named group
-   3. the group name is entered into the VAMP settings panel
+   2. the meshes to be vamp'd are in a named collection
+   3. the vamp collection name is entered into the VAMP settings panel
    4. the Vertex Limit is set higher than the number of vertices in your meshes
    
 ### Installing VAMP
-- VAMP is a Blender plugin, written for use with Blender 2.79.  Currently will not work with Blender 2.8x, but a 2.8x version is planned.
+- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8x.  
 - To install, 
-  - Download vamp_279.zip and save to your desktop.  
-  - Within Blender, go to User Preferences, Add-ons, then select Install Add-on from File.  
-  - Browse to the vamp_279.zip file and click Install.  
-  - After installing, enable vamp_279 in the list of add-ons.  
+  - Download vamp_283.zip and save to your desktop.  
+  - Within Blender, go to Edit\Preferences\Add-ons, then select Install.  
+  - Browse to the vamp_283.zip file and click Install.  
+  - After installing, enable vamp_283 in the list of add-ons.  
   - You should see the VAMP Settings panel now, under the Render properties tab.  
+
+ * There is also an older version of this add-on which works with Blender 2.79. Download vamp_279.zip.
   
 ### META
 
