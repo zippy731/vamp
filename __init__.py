@@ -1,7 +1,7 @@
 bl_info = {
     "name": "vamp_283",
     "author": "Chris Allen", 
-    "version": (1, 1, 01),
+    "version": (1, 1, 1),
     "blender": (2, 80, 0),
     "location": "View3D",
     "description": "VAMP: Vector Art Motion Processor. Removes back faces.",
