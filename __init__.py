@@ -1,7 +1,7 @@
 bl_info = {
     "name": "vamp_283",
     "author": "Chris Allen", 
-    "version": (1, 1, 0),
+    "version": (1, 1, 01),
     "blender": (2, 80, 0),
     "location": "View3D",
     "description": "VAMP: Vector Art Motion Processor. Removes back faces.",
@@ -233,8 +233,12 @@ def get_all_the_stuff():
     bm_all = bmesh.new()       
     for obj in bpy.data.collections[target_name].objects:
         # evaluate object, which applies all modifiers
-        data_copy=get_eval_mesh(obj)        
-        bm_all.from_mesh(data_copy) # appends transformed data to the bmesh
+        print(obj)
+        TheType = obj.type
+        print('TheType is ',TheType)
+        if(TheType == 'MESH') or (TheType == 'CURVE'):
+            data_copy=get_eval_mesh(obj)        
+            bm_all.from_mesh(data_copy) # appends transformed data to the bmesh
     original_vert_count=(len(data_copy.edges)) # test for vert count. if too high, just quit.
     # bm_all now contains bmesh containing all data we need for next step
     # we will also use it later for BVHTree hit testing     
@@ -250,6 +254,9 @@ def get_marked_edges():
     bm_marked = bmesh.new()
     bm_marked.clear()
     for obj in bpy.data.collections[target_name].objects:
+        if(obj.type!='MESH'):
+            #this only works for meshes. if not a mesh, skip.
+            break
         # evaluate object, which applies all modifiers
         data_copy=get_eval_mesh(obj)
         counter = 0
@@ -314,6 +321,9 @@ def get_sep_meshes():
     bm_all = bmesh.new() 
     bm_all.clear()
     for obj in bpy.data.collections[target_name].objects:
+        if(obj.type != 'MESH' and obj.type != 'CURVE'):
+            #this only works for meshes or curves. if not a mesh, skip.
+            break
         bm_obj = bmesh.new()              
         # evaluate object, which applies all modifiers
         data_copy=get_eval_mesh(obj)
