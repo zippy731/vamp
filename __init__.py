@@ -35,8 +35,8 @@ from random import sample
 global ray_dist # raycast distance
 global cast_sens # raycast sensitivity, allows for offset of source vertex
 global vert_limit # function slows exponentially for large vert counts. keep < 10k
-global cam_x_scale
-global cam_y_scale
+#global cam_x_scale
+#global cam_y_scale
 global cam
 
 global edge_sub_unit
@@ -253,10 +253,15 @@ def get_marked_edges():
     global bm_marked
     bm_marked = bmesh.new()
     bm_marked.clear()
+    print('Iterating Marked Edges now.')
     for obj in bpy.data.collections[target_name].objects:
+        print(obj)
+        TheType = obj.type
+        print('TheType is ',TheType)
         if(obj.type!='MESH'):
             #this only works for meshes. if not a mesh, skip.
-            break
+            continue
+            
         # evaluate object, which applies all modifiers
         data_copy=get_eval_mesh(obj)
         counter = 0
@@ -323,7 +328,7 @@ def get_sep_meshes():
     for obj in bpy.data.collections[target_name].objects:
         if(obj.type != 'MESH' and obj.type != 'CURVE'):
             #this only works for meshes or curves. if not a mesh, skip.
-            break
+            continue
         bm_obj = bmesh.new()              
         # evaluate object, which applies all modifiers
         data_copy=get_eval_mesh(obj)
@@ -473,9 +478,9 @@ def get_slicestuff(bm_test, bm_mask):
         test_edge_length = distance(test_vert0,test_vert1) 
         if test_vert0 == test_vert1:
             #ignore zero length edges. skip.
-            break
+            continue
         if test_edge_length == 0:
-            break
+            continue
         edge_sub_count = round(test_edge_length / edge_sub_unit)
         
         if edge_sub_count < 1:
@@ -581,6 +586,18 @@ def make_flattened(bm_output,flattened_name):
     #remap to flat plane for oscistudio to see
     global cam
     global vamp_scale
+    
+    #print('=================')
+    #print('getting cam scale from blender')
+    #print('=================')
+    res_y = bpy.context.scene.render.resolution_y
+    #print('res_y is ',res_y)
+    res_x = bpy.context.scene.render.resolution_x
+    #print('res_x is ',res_x)
+    cam_x_scale = res_x/500
+    cam_y_scale = res_y/500
+    
+    
     vamp_scale = bpy.context.scene.vamp_params.vamp_scale
     # determine location based on xy cam scale
     flat_loc = Vector ((-0.5 * cam_x_scale * vamp_scale,-0.5 * cam_y_scale * vamp_scale,0))
