@@ -1,7 +1,7 @@
 bl_info = {
     "name": "vamp_283",
     "author": "Chris Allen", 
-    "version": (1, 1, 1),
+    "version": (1, 1, 2),
     "blender": (2, 80, 0),
     "location": "View3D",
     "description": "VAMP: Vector Art Motion Processor. Removes back faces.",
@@ -31,12 +31,9 @@ import time
 import random
 from random import sample
 
-#global sens # sensitivity - drives bracket vertex distance
 global ray_dist # raycast distance
 global cast_sens # raycast sensitivity, allows for offset of source vertex
-global vert_limit # function slows exponentially for large vert counts. keep < 10k
-#global cam_x_scale
-#global cam_y_scale
+#global vert_limit # function slows exponentially for large vert counts. keep < 10k
 global cam
 
 global edge_sub_unit
@@ -79,9 +76,21 @@ class VampProperties(PropertyGroup):
     )
     vamp_raycast_dist: IntProperty(
         name = "Raycast Distance",
-        min = 1,
-        max = 100,
+        soft_min = 1,
+        soft_max = 100,
         description = "Hit testing distance.",
+        default = 10
+    )
+    vamp_cull: BoolProperty(
+        name = "Cull",
+        default = True,
+        description = "Only process objects within cull radius"
+    )
+    vamp_cull_dist: IntProperty(
+        name = "Cull Distance",
+        soft_min = 1,
+        soft_max = 100,
+        description = "Cull distance.",
         default = 10
     )
     vamp_crop: BoolProperty(
@@ -101,8 +110,8 @@ class VampProperties(PropertyGroup):
     )     
     vamp_scale: FloatProperty(
         name = "Output Scale",
-        min = .25,
-        max = 5,
+        soft_min = .25,
+        soft_max = 5,
         default = 1.0,
         description = "Resize final output",
     )
@@ -113,8 +122,8 @@ class VampProperties(PropertyGroup):
     vamp_denoise_thresh: FloatProperty(
         name = "Limit",
         default = .05,
-        min = .001,
-        max = 10,
+        soft_min = .001,
+        soft_max = 10,
         precision = 3
     )    
     vamp_denoise_pct: FloatProperty(
@@ -123,15 +132,17 @@ class VampProperties(PropertyGroup):
         min = .02,
         max = 1.0
     )    
-    vamp_vert_limit: IntProperty(
-        name = "Vertex Limit",
-        min = 1000,
-        max = 1000000,
-        description = "Vertex Count Limit.",
-        default = 10000
+    vamp_edge_limit: IntProperty(
+        name = "Edge Limit",
+        soft_min = 1000,
+        soft_max = 1000000,
+        description = "Edge Count Limit.",
+        default = 100000
     )
     vamp_subd_limit: IntProperty(
         name = "Cuts per Edge",
+        soft_min = 2,
+        soft_max = 10,
         min = 2,
         max = 100,
         description = "Max # of cuts",
@@ -139,18 +150,16 @@ class VampProperties(PropertyGroup):
     )
     vamp_edge_subdiv: FloatProperty(
         name = "Min length",
-        min = 0.005,
-        max = 2.0,
+        soft_min = 0.005,
+        soft_max = 2.0,
         default = 0.2,
         precision = 3
     )
     
 # fixed parameters
 vamp_on = False #switched off at beginning
-vert_limit = 100000 #keep below 100k for reasonable performance. 
 collapse_angle = 1.5 # radians, for dissolve function.
-cam_x_scale = 4 #horiz aspect of camera.
-cam_y_scale = 3 #horiz aspect of camera.
+recent_frame = -1 # initialize recent frame
 
 def item_check():
     global cam
@@ -185,7 +194,7 @@ def clean_up_first():
     scene = bpy.context.scene
     if bpy.data.objects.get('_slicedFinal') is None:
         newobj = bpy.data.objects.new(name='_slicedFinal',object_data = empty_mesh.copy())
-        bpy.context.scene.collection.objects.link(newobj) # (2.8) Links object to scene master collection        
+        bpy.context.scene.collection.objects.link(newobj)       
     if bpy.data.objects.get('_silhouetteFinal') is None:
         newobj = bpy.data.objects.new(name='_silhouetteFinal',object_data = empty_mesh.copy())
         bpy.context.scene.collection.objects.link(newobj)   
@@ -201,7 +210,7 @@ def clean_up_first():
 
     
 def join_bmeshes(bmesh_list):
-    # combine multiple meshes into a single mesh
+    # combine multiple bmeshes into a single bmesh
     joined_bmesh = bmesh.new()
     joined_bmesh.clear()
     for bm in bmesh_list:
@@ -220,26 +229,52 @@ def get_eval_mesh(obj):
     data_copy = bpy.data.meshes.new_from_object(object_eval)
     # also need to transform origin mesh, else they'll all be at 0,0,0
     the_matrix = obj.matrix_world        
-    data_copy.transform(the_matrix) # transform mesh using source object transforms    
-    
+    data_copy.transform(the_matrix) # transform mesh using source object transforms       
     return data_copy
-    
+
+def in_range(obj):
+    #used with culling.  Identifies whether object origins are within culling range
+    global cam
+    cam_loc = cam.matrix_world.decompose()[0]
+    obj_loc = obj.matrix_world.decompose()[0]
+    cull_dist = bpy.context.scene.vamp_params.vamp_cull_dist
+    if bpy.context.scene.vamp_params.vamp_cull == True:
+        cull_it = 1
+    else:
+        cull_it = 0    
+    if(cull_dist > (distance(obj_loc,cam_loc) * cull_it)):
+        return True
+    else:
+        return False
+        
+def mark_inrange():
+    #used with culling. Generates a list of objects within culling radius from camera
+    global inrange_objs
+    #inrange_objs = []
+    target_name = bpy.context.scene.vamp_params.vamp_target
+    ok_types = ['MESH','CURVE']
+    for obj in bpy.data.collections[target_name].objects:
+        TheType = obj.type
+        if((in_range(obj)) and (TheType in ok_types)):
+            obj["vamp_inrange"] = True
+        else:
+            obj["vamp_inrange"] = False            
+    inrange_objs = [obj for obj in bpy.data.collections[target_name].objects if obj["vamp_inrange"] == True]
+    print('inrange_objs count: ',len(inrange_objs))    
     
 def get_all_the_stuff():
     #outputs bm_all
     global bm_all
-    global original_vert_count
+    global original_edge_count
+    global inrange_objs
     target_name = bpy.context.scene.vamp_params.vamp_target
-    bm_all = bmesh.new()       
-    for obj in bpy.data.collections[target_name].objects:
-        # evaluate object, which applies all modifiers
-        print(obj)
-        TheType = obj.type
-        print('TheType is ',TheType)
-        if(TheType == 'MESH') or (TheType == 'CURVE'):
-            data_copy=get_eval_mesh(obj)        
-            bm_all.from_mesh(data_copy) # appends transformed data to the bmesh
-    original_vert_count=(len(data_copy.edges)) # test for vert count. if too high, just quit.
+    bm_all = bmesh.new()
+    new_edges=0
+    for obj in inrange_objs:
+        data_copy=get_eval_mesh(obj)  
+        new_edges += len(data_copy.edges)
+        bm_all.from_mesh(data_copy) # appends transformed data to the bmesh
+    original_edge_count=new_edges # will test against edge limit. if too high, just quit.
     # bm_all now contains bmesh containing all data we need for next step
     # we will also use it later for BVHTree hit testing     
     return {'FINISHED'}
@@ -248,20 +283,13 @@ def get_marked_edges():
     #creates bm_marked
     #iterate thru all objects in group, find marked edges, 
     #create a single new BM comprising only marked edges
-    #target_name = bpy.context.scene.vamp_params.vamp_target
     target_name = bpy.context.scene.vamp_params.vamp_target
     global bm_marked
+    global inrange_objs
     bm_marked = bmesh.new()
     bm_marked.clear()
     print('Iterating Marked Edges now.')
-    for obj in bpy.data.collections[target_name].objects:
-        print(obj)
-        TheType = obj.type
-        print('TheType is ',TheType)
-        if(obj.type!='MESH'):
-            #this only works for meshes. if not a mesh, skip.
-            continue
-            
+    for obj in [obj for obj in inrange_objs if obj.type == 'MESH']:
         # evaluate object, which applies all modifiers
         data_copy=get_eval_mesh(obj)
         counter = 0
@@ -315,20 +343,17 @@ def get_marked_edges():
             bm_creased.clear()
             
     # bm_marked now contains a single bm, with ONLY freestyle-marked edges
-        
     return {'FINISHED'}      
     
 def get_sep_meshes():
     # iterate the original list, generate a LIST of individual meshes for further analysis
     global sep_meshes
+    global inrange_objs
     target_name = bpy.context.scene.vamp_params.vamp_target
     sep_meshes = []  
     bm_all = bmesh.new() 
     bm_all.clear()
-    for obj in bpy.data.collections[target_name].objects:
-        if(obj.type != 'MESH' and obj.type != 'CURVE'):
-            #this only works for meshes or curves. if not a mesh, skip.
-            continue
+    for obj in inrange_objs:
         bm_obj = bmesh.new()              
         # evaluate object, which applies all modifiers
         data_copy=get_eval_mesh(obj)
@@ -365,7 +390,6 @@ def is_corner(v):
     e1, e2 = v.link_edges[:]
     v1 = e1.other_vert(v).co - v.co
     v2 = e2.other_vert(v).co - v.co
-    #print('v,v1,v2 are ',v.co,e1.other_vert(v).co,e2.other_vert(v).co)
     # need error trap if .co is same for any of these.
     return v1.angle(-v2) >= radians(MIN_ANGLE)
 
@@ -438,7 +462,6 @@ def get_slicestuff(bm_test, bm_mask):
     # inputs: bm_test, bm_mask
     # outputs: bm_slice, bm_sil
     global cam
-    #global bm_slice
     global bm_sil
     edge_sub_unit = bpy.context.scene.vamp_params.vamp_edge_subdiv # min length of subd
     subedge_limit = bpy.context.scene.vamp_params.vamp_subd_limit # max # of subd cuts
@@ -587,13 +610,8 @@ def make_flattened(bm_output,flattened_name):
     global cam
     global vamp_scale
     
-    #print('=================')
-    #print('getting cam scale from blender')
-    #print('=================')
     res_y = bpy.context.scene.render.resolution_y
-    #print('res_y is ',res_y)
     res_x = bpy.context.scene.render.resolution_x
-    #print('res_x is ',res_x)
     cam_x_scale = res_x/500
     cam_y_scale = res_y/500
     
@@ -623,7 +641,9 @@ def main_routine():
     global sil_mode
     global marked_mode
     global err_text
-
+    global inrange_objs
+    
+    scene = bpy.data.scenes[0]
     sil_mode = bpy.context.scene.vamp_params.vamp_sil_mode
     # sil_mode decides whether silhouette is overall contour (of all objects combined,) or individual 
     # silhouettes per object.
@@ -633,19 +653,26 @@ def main_routine():
     
     start_time=time.time()   
     print('--- running main routine ---')
+    print('-- current frame: ',scene.frame_current)
     
     # presumes item_check run first, to ensure data is there.
     clean_up_first()
-    get_all_the_stuff() # puts all objects into a single bm_all
-    print('original vert count is: ',original_vert_count) 
-    vert_limit = bpy.context.scene.vamp_params.vamp_vert_limit
-    if original_vert_count > vert_limit:
-        #too many verts. quit.
+    mark_inrange() # mark all objects within cull range, avoids further processing on excluded objects.
+    if (len(inrange_objs) == 0):
+        print('zero objects within cull range. End.')
+        return
+        
+        
+    get_all_the_stuff() # puts all objects into a single bm_all. used for masking edges from view
+    print('original edge count is: ',original_edge_count) 
+    edge_limit = bpy.context.scene.vamp_params.vamp_edge_limit
+    if original_edge_count > edge_limit:
+        #too many edges. quit.
         print('###########')
-        print('I quit.  Vert limit is',vert_limit)
-        print('This project is',original_vert_count,'verts, and would take too long.')        
+        print('I quit.  Edge limit is',edge_limit)
+        print('This project is',original_edge_count,'edges, and would take too long.')        
         print('###########') 
-        err_text = 'Sorry, too many verts' 
+        err_text = 'Sorry, too many edges' 
     else:
         get_sep_meshes() # gets separate meshes, for further processing
         
@@ -684,7 +711,6 @@ def main_routine():
         make_flattened(fixed_bm_slice,'_flatSliced')        
         make_flattened(fixed_bm_sil,'_flatSilhouette')              
         
-        #scene.update()  #old 2.79 version 
         # Update view layer (added 2.8)
         layer = bpy.context.view_layer
         layer.update()
@@ -704,9 +730,10 @@ def main_routine():
         dg.update()          
         bpy.context.view_layer.update()
         
-    end_time=time.time()
+    end_time = time.time()
     print('execution took ',end_time - start_time,' seconds.')
-    print('original vert count was: ',original_vert_count)    
+    print('original edge count was: ',original_edge_count)  
+    print('====DONE====')
     return {'FINISHED'}
 
 class OBJECT_OT_vamp_once(bpy.types.Operator):
@@ -739,7 +766,7 @@ class OBJECT_OT_vamp_turn_on(bpy.types.Operator):
 
         vamp_on = True
         if item_check():
-            main_routine()
+            pass
         else:
             print('item_check failed. :(  ')  
             vamp_on = False                 
@@ -774,7 +801,6 @@ class Vamp_PT_Panel(bpy.types.Panel):
         vampparams = scene.vamp_params
         
         row = layout.row()
-        #row.scale_y = 2.0
         sub = row.row()
         sub.scale_x = 2.0
         sub.scale_y = 2.0        
@@ -803,11 +829,15 @@ class Vamp_PT_Panel(bpy.types.Panel):
         
         layout.prop(vampparams, "vamp_target")
         layout.prop(vampparams, "vamp_scale")
-        layout.prop(vampparams, "vamp_vert_limit")
+        layout.prop(vampparams, "vamp_edge_limit")
         
         row = layout.row(align=True)        
         row.prop(vampparams, "vamp_subd_limit")
         row.prop(vampparams, "vamp_edge_subdiv")       
+        
+        row = layout.row(align=True)
+        row.prop(vampparams, "vamp_cull")
+        row.prop(vampparams, "vamp_cull_dist")   
         
         row = layout.row(align=True)
         row.prop(vampparams, "vamp_raycast_dist")
@@ -821,10 +851,17 @@ class Vamp_PT_Panel(bpy.types.Panel):
 
 def vamp_handler(scene):    
     global vamp_on
-    global cam
+    global cam #te4sti
+    global recent_frame
+    scene = bpy.data.scenes[0]
     if vamp_on is True:
         if item_check():
-            main_routine()
+            #double check we haven't already vamp'd this frame..
+            if scene.frame_current != recent_frame: 
+                main_routine()
+            else:
+                print('***') #something triggered handler again before frame change. skip processing.
+            recent_frame = scene.frame_current
         else:
             print('item_check failed. :(  ')      
 
@@ -833,7 +870,17 @@ classes = (OBJECT_OT_vamp_once,OBJECT_OT_vamp_turn_on,OBJECT_OT_vamp_turn_off,Va
 def register():
     #polite app handler management, per:
     #    https://oktomus.com/posts/2017/safely-manage-blenders-handlers-while-developing/
+    
+    #avoiding dup handlers:
+    #  https://blender.stackexchange.com/questions/146837/how-do-i-properly-update-an-application-handler 
+    
     handler_key = 'VAMP_283_KEY'
+    
+    old_vamp_handlers = [h for h in bpy.app.handlers.frame_change_pre
+        if h.__name__ == handler_key]
+    for v in old_vamp_handlers:
+        bpy.app.handlers.frame_change_pre.remove(f)         
+    
     if handler_key in driver_namespace:
         if driver_namespace[handler_key] in frame_change_pre:
             frame_change_pre.remove(driver_namespace[handler_key])
@@ -841,14 +888,11 @@ def register():
     bpy.app.handlers.frame_change_pre.append(vamp_handler) 
     driver_namespace[handler_key] = vamp_handler
     
-    # need better handler handling, like this:
-    #    https://oktomus.com/posts/2017/safely-manage-blenders-handlers-while-developing/
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.vamp_params = PointerProperty(type=VampProperties)  #old 2.79 version 
  
 def unregister():
-    #del vamp_params     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)    
 
