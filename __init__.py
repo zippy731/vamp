@@ -42,7 +42,7 @@ global vamp_on
 class VampProperties(PropertyGroup):
     vamp_target: bpy.props.StringProperty(
         name = "VAMP Target",
-        description = "Group name for VAMP",
+        description = "Collection name for VAMP",
         default = "VisibleObjects"
     )
     vamp_sil_mode: BoolProperty(
@@ -83,7 +83,7 @@ class VampProperties(PropertyGroup):
     )
     vamp_cull: BoolProperty(
         name = "Cull",
-        default = True,
+        default = False,
         description = "Only process objects within cull radius"
     )
     vamp_cull_dist: IntProperty(
