@@ -1,7 +1,7 @@
 bl_info = {
     "name": "vamp_283",
     "author": "Chris Allen", 
-    "version": (1, 1, 2),
+    "version": (1, 1, 4),
     "blender": (2, 80, 0),
     "location": "View3D",
     "description": "VAMP: Vector Art Motion Processor. Removes back faces.",
@@ -12,12 +12,11 @@ bl_info = {
 
 # GOOD TUT: https://blender.stackexchange.com/questions/57306/how-to-create-a-custom-ui
 
-
 # updated from vamp_279
 # based on https://theduckcow.com/2019/update-addons-both-blender-28-and-27-support/
 
-
 import bpy
+import importlib, sys
 from bpy.props import IntProperty, EnumProperty, FloatProperty, BoolProperty, StringProperty, PointerProperty
 from bpy.types import PropertyGroup, Operator, Panel, Scene
 from bpy.app import driver_namespace
@@ -33,7 +32,6 @@ from random import sample
 
 global ray_dist # raycast distance
 global cast_sens # raycast sensitivity, allows for offset of source vertex
-#global vert_limit # function slows exponentially for large vert counts. keep < 10k
 global cam
 
 global edge_sub_unit
@@ -156,11 +154,44 @@ class VampProperties(PropertyGroup):
         precision = 3
     )
     
+    # new 7/24/20 trace mode options
+    vamp_trace: BoolProperty(
+        name = "Trace",
+        default = False 
+    )
+    vamp_trace_limit: IntProperty(
+        name = "Trace Limit",
+        soft_min = 100,
+        soft_max = 100000,
+        description = "Trace Vert Limit.",
+        default = 10000
+    )
+    vamp_trace_options = [
+        ("Verts","Verts","Use All Verts",0),
+        ("Edges","Edges","Trace Edge Centers",1),
+        ("Faces","Faces","Trace Face Centers",2)
+    ]          
+    vamp_trace_enum: EnumProperty(
+        items = vamp_trace_options,
+        name = "Trace Mode",
+        default = "Faces"
+    ) 
+    vamp_trace_curve_options = [
+        ("NURBS","NURBS","Smoother NURBS",1),
+        ("Bezier","Bezier","Faster Bezier",0)
+    ]          
+    vamp_trace_curve_enum: EnumProperty(
+        items = vamp_trace_curve_options,
+        name = "Curve Type",
+        default = "Bezier"
+    ) 
+    
 # fixed parameters
 vamp_on = False #switched off at beginning
+trace_on = False # trace defaults to off
 collapse_angle = 1.5 # radians, for dissolve function.
 recent_frame = -1 # initialize recent frame
-
+bpy
 def item_check():
     global cam
     global scene
@@ -191,21 +222,29 @@ def clean_up_first():
     target_name = bpy.context.scene.vamp_params.vamp_target    
     #now, create new empty objects 
     empty_mesh = bpy.data.meshes.new('empty_mesh') 
+    empty_curve = bpy.data.curves.new('empty_curve','CURVE')
     scene = bpy.context.scene
     if bpy.data.objects.get('_slicedFinal') is None:
         newobj = bpy.data.objects.new(name='_slicedFinal',object_data = empty_mesh.copy())
         bpy.context.scene.collection.objects.link(newobj)       
     if bpy.data.objects.get('_silhouetteFinal') is None:
         newobj = bpy.data.objects.new(name='_silhouetteFinal',object_data = empty_mesh.copy())
-        bpy.context.scene.collection.objects.link(newobj)   
+        bpy.context.scene.collection.objects.link(newobj) 
     if bpy.data.objects.get('_flatSliced') is None:
         newobj = bpy.data.objects.new(name='_flatSliced',object_data = empty_mesh.copy())
         bpy.context.scene.collection.objects.link(newobj)
     if bpy.data.objects.get('_flatSilhouette') is None:
         newobj = bpy.data.objects.new(name='_flatSilhouette',object_data = empty_mesh.copy())
         bpy.context.scene.collection.objects.link(newobj) 
-    #now remove empty mesh
+    if bpy.data.objects.get('_traceFinalMesh') is None:
+        newobj = bpy.data.objects.new(name='_traceFinalMesh',object_data = empty_mesh.copy())
+        bpy.context.scene.collection.objects.link(newobj)         
+    if bpy.data.objects.get('_traceFinal') is None:
+        newobj = bpy.data.objects.new(name='_traceFinal',object_data = empty_curve.copy())
+        bpy.context.scene.collection.objects.link(newobj)           
+    #now remove empty mesh & empty curve
     bpy.data.meshes.remove(empty_mesh, do_unlink=True)
+    bpy.data.curves.remove(empty_curve, do_unlink=True)    
     return {'FINISHED'}
 
     
@@ -295,7 +334,7 @@ def get_marked_edges():
         counter = 0
         marked_list = []
         for e in data_copy.edges:
-            if e.use_freestyle_mark is True:
+            if (e.use_freestyle_mark is True or e.use_edge_sharp is True):
                 marked_list.append(counter)
             counter += 1             
         
@@ -430,6 +469,9 @@ def hit_test_bvh(originV,targetV,the_bvh):
     new_origin = originV + offset_vect # raycast with no offset fails (false positives). needs a buffer.
     direction = (direction_vect).normalized() # raycast expects a normalized vect
     ray_dist = bpy.context.scene.vamp_params.vamp_raycast_dist
+    # if ray casts PAST camera and hits, need to not count that as a hit!     
+    cam_dist = distance(targetV,originV)
+    ray_dist = min(ray_dist, cam_dist)
     
     (loc,norm,indx,dist) = the_bvh.ray_cast(new_origin,direction,ray_dist)
     if loc is not None:
@@ -485,7 +527,7 @@ def get_slicestuff(bm_test, bm_mask):
     compare_edges = edge_list # make dup list for comparison later
     
     # this is only for bvh version. 
-    the_bvh = mathutils.bvhtree.BVHTree.FromBMesh(bm_mask, epsilon = 0.0)
+    the_bvh = mathutils.bvhtree.BVHTree.FromBMesh(bm_mask, epsilon = 0.00)
            
     the_edges=[] # all visible edges
     the_sil_edges=[] # silhouette only
@@ -654,6 +696,8 @@ def main_routine():
     start_time=time.time()   
     print('--- running main routine ---')
     print('-- current frame: ',scene.frame_current)
+    if trace_on is True:
+        main_trace_routine()
     
     # presumes item_check run first, to ensure data is there.
     clean_up_first()
@@ -736,6 +780,128 @@ def main_routine():
     print('====DONE====')
     return {'FINISHED'}
 
+def makeSpline(cu, typ, points):
+    #tweaked, from     https://blenderartists.org/t/how-do-i-create-a-simple-curve-in-python/477260/4   
+    spline = cu.splines.new(typ)
+    npoints = len(points)    
+    if typ == 'BEZIER' or typ == 'BSPLINE':
+        spline.bezier_points.add(npoints-1)
+        for (n,pt) in enumerate(points):
+            bez = spline.bezier_points[n]
+            #(bez.co, bez.handle1, bez.handle1_type, bez.handle2, bez.handle2_type) = pt
+            #print('pt is ',pt)
+            #(bez.co, bez.handle_left, bez.handle_right) = pt
+            (bez.co) = pt
+            (bez.handle_left) = pt
+            (bez.handle_right) = pt
+            (bez.handle_left_type) = 'AUTO' # changed from FREE
+            (bez.handle_right_type) = 'AUTO' # changed from FREE
+            
+            #(bez.handle_left_type, bez.handle_right_type) = 'FREE'
+            
+    else:
+        spline.points.add(npoints-1)    # One point already exists?
+        for (n,pt) in enumerate(points):
+            spline.points[n].co=(pt[0],pt[1],pt[2],.01)
+            #spline.points[n].co = pt 
+            #spline.points[n].weight = 1
+                
+    return    
+
+def MidpointVecs(vec1, vec2):
+    vec = vec1 + vec2
+    vec = vec / 2
+    return vec
+    
+def main_trace_routine():
+    print('=== main_trace_routine() ====')
+    clean_up_first()
+    
+    trace_mode = bpy.context.scene.vamp_params.vamp_trace_enum
+
+    target_name = bpy.context.scene.vamp_params.vamp_target
+    bm_all_trace = bmesh.new()
+    mark_inrange()
+    global inrange_objs
+    if len(inrange_objs) == 0:
+        #nothing in range. just quit.
+        print('no in-range objects. quitting.')
+        return 
+    for obj in inrange_objs:
+        data_copy=get_eval_mesh(obj)  
+        #new_edges += len(data_copy.edges)
+        bm_all_trace.from_mesh(data_copy) # appends transformed data to the bmesh
+    inputVecs = []
+    outputVecs = []
+
+    #if output mode is vectors, use all vectors. otherwise use face centers. 
+    if  trace_mode == 'Verts':
+        rawInputVecs = [vert.co for vert in bm_all_trace.verts]
+    elif trace_mode == 'Edges':
+    # from https://www.blender.org/forum/viewtopic.php?t=26018
+        rawInputVecs = [Vector((edge3.verts[0].co+edge3.verts[1].co)/2) for edge3 in bm_all_trace.edges]
+    else:
+        rawInputVecs = [face.calc_center_median() for face in bm_all_trace.faces]
+    if len(rawInputVecs) == 0:
+        #nothing in range. just quit.
+        print('no faces in origin obj. quitting.')
+        return 
+    for vec in rawInputVecs:
+        if vec not in inputVecs:
+            inputVecs.append(vec)
+        #append only unique values
+    startVec = inputVecs[0]
+    inputVecs.remove(startVec)
+    outputVecs.append(startVec)
+
+    limit = bpy.context.scene.vamp_params.vamp_trace_limit
+    trace_curve_type = bpy.context.scene.vamp_params.vamp_trace_curve_enum    
+    scope=min(limit,len(inputVecs))
+
+    for i in range (scope):
+        size = len(inputVecs)
+        sizeOut = len(outputVecs)
+        #testVec=inputVecs[size-1]
+        testVec=outputVecs[sizeOut-1]
+        kd = mathutils.kdtree.KDTree(size)
+        for i, v in enumerate(inputVecs):
+            kd.insert(v, i)
+        kd.balance()
+        nearVec=kd.find_n(testVec,1)
+        
+        inputVecs.remove(nearVec[0][0])
+        outputVecs.append(nearVec[0][0])       
+    
+    #create 4-element point/weigh variables from vectors
+    points=[]
+    for vec in outputVecs:
+        newPt = (vec) # 4 elements for nurbs, 3 for bezier
+        
+        #print(newPt)
+        points.append(newPt)    
+    #create new curve data block from points
+    points=outputVecs
+    cu = bpy.data.curves.new("finalCurve", "CURVE")
+    cu.dimensions = "3D"
+    
+    if(trace_curve_type == 'Bezier'):
+        makeSpline(cu, "BEZIER", points )
+    else:
+        makeSpline(cu, "NURBS", points )
+    #now simplify the curve:
+    #cu = cu.decimate(ratio=0.5)# decimate only works as .ops. in edit context...
+    
+    #put new data block into existing curve object
+    bpy.data.objects['_traceFinal'].data = cu 
+    
+    #make mesh version too...
+    trace_mesh=get_eval_mesh(bpy.data.objects['_traceFinal'])
+    trace_mesh.name = 'traceFinalMesh'
+    bpy.data.objects['_traceFinalMesh'].data = trace_mesh   
+    #print('trace_mesh is ',trace_mesh)
+    print('======== trace done. ',len(points),' vectors plotted..')         
+    return {'FINISHED'}
+    
 class OBJECT_OT_vamp_once(bpy.types.Operator):
     bl_label = "VAMP ONCE"
     bl_idname = "render.vamp_once"
@@ -771,7 +937,11 @@ class OBJECT_OT_vamp_turn_on(bpy.types.Operator):
             print('item_check failed. :(  ')  
             vamp_on = False                 
         return {'FINISHED'}
+        
 
+
+        
+        
 class OBJECT_OT_vamp_turn_off(bpy.types.Operator):
     bl_label = "Turn off VAMP"
     bl_idname = "render.vamp_turn_off"
@@ -781,7 +951,64 @@ class OBJECT_OT_vamp_turn_off(bpy.types.Operator):
         global vamp_on
         vamp_on = False                 
         return {'FINISHED'}
+        
+class OBJECT_OT_trace_turn_on(bpy.types.Operator):
+    global trace_on
+    bl_label = "Turn on Trace"
+    bl_idname = "render.trace_turn_on"
+    bl_description = "Turn on Trace"        
+    def execute(self, context):
+        print("turning Trace on")
+        global trace_on
+        scene = context.scene
+        vampparams = scene.vamp_params
+        trace_on = True        
+        if item_check():
+            pass
+        else:
+            print('item_check failed. :(  ')  
+            trace_on = False                 
+        return {'FINISHED'}
+        
+class OBJECT_OT_trace_turn_off(bpy.types.Operator):
+    bl_label = "Turn off TRACE"
+    bl_idname = "render.trace_turn_off"
+    bl_description = "Turn off Trace"        
+    def execute(self, context):
+        print("turning trace off")
+        global trace_on
+        trace_on = False                 
+        return {'FINISHED'}
 
+class OBJECT_OT_trace_once(bpy.types.Operator):
+    bl_label = "TRACE ONCE"
+    bl_idname = "render.trace_once"
+    bl_description = "TRACE ONCE"       
+    def execute(self, context):
+        global cam
+        global err_text
+        if item_check():
+            main_trace_routine()
+        else:
+            print('item_check failed. :(  ') 
+            err_phrase = 'Item check failed.  ' + err_text
+            self.report({'WARNING'}, err_phrase)
+        return {'FINISHED'}          
+
+
+class OBJECT_OT_reloadme(bpy.types.Operator):
+    # discussion here: https://blender.stackexchange.com/questions/2691/is-there-a-way-to-restart-a-modified-addon
+    # discussion/ source here: https://developer.blender.org/T66924   
+    bl_label = "Reload Script"
+    bl_idname = "render.vamp_reloadme"
+    bl_description = "Reload VAMP Script"           
+    def execute(self, context):  
+        module_name = "vamp_283"   
+        mod = sys.modules.get(module_name)
+        importlib.reload(mod)  
+        re_reg_handler()
+        return {'FINISHED'}      
+        
 class Vamp_PT_Panel(bpy.types.Panel):
     #Creates a Panel in the render context of the properties editor
     bl_label = "VAMP Settings"
@@ -846,7 +1073,32 @@ class Vamp_PT_Panel(bpy.types.Panel):
         row = layout.row(align=True)
         row.prop(vampparams, "vamp_denoise_pass")
         row.prop(vampparams, "vamp_denoise_thresh")
-        row.prop(vampparams, "vamp_denoise_pct")          
+        row.prop(vampparams, "vamp_denoise_pct")   
+
+        #new TRACE options
+        row = layout.row()
+        sub = row.row()
+        sub.scale_x = 2.0
+        sub.scale_y = 2.0    
+        if trace_on is True:
+            sub.operator("render.trace_turn_off", text="Turn Off Trace")            
+        else:   
+            sub.operator("render.trace_turn_on", text="Turn On Trace")           
+        sub.scale_y = 2.0   
+        sub.operator("render.trace_once", text="Trace ONCE") 
+
+        row = layout.row(align=True)
+        row.prop(vampparams, "vamp_trace_limit")
+        
+        row = layout.row(align=True)        
+        row.prop(vampparams, "vamp_trace_enum")
+        row.prop(vampparams, "vamp_trace_curve_enum")
+        
+        layout.separator()
+        # reload this script, re-register app handler
+        layout.operator("render.vamp_reloadme", text="Reload Script")
+        
+        
 
 
 def vamp_handler(scene):    
@@ -865,9 +1117,9 @@ def vamp_handler(scene):
         else:
             print('item_check failed. :(  ')      
 
-classes = (OBJECT_OT_vamp_once,OBJECT_OT_vamp_turn_on,OBJECT_OT_vamp_turn_off,VampProperties,Vamp_PT_Panel)          
+classes = (OBJECT_OT_vamp_once,OBJECT_OT_vamp_turn_on,OBJECT_OT_vamp_turn_off,OBJECT_OT_trace_once,OBJECT_OT_trace_turn_on,OBJECT_OT_trace_turn_off,OBJECT_OT_reloadme,VampProperties,Vamp_PT_Panel)          
 
-def register():
+def re_reg_handler():
     #polite app handler management, per:
     #    https://oktomus.com/posts/2017/safely-manage-blenders-handlers-while-developing/
     
@@ -887,6 +1139,9 @@ def register():
         del driver_namespace[handler_key]
     bpy.app.handlers.frame_change_pre.append(vamp_handler) 
     driver_namespace[handler_key] = vamp_handler
+
+def register():
+    re_reg_handler()
     
     for cls in classes:
         bpy.utils.register_class(cls)
