@@ -39,7 +39,7 @@ Recommended workflow is:
 
 **Note:** There are two versions of VAMP. One works with Blender 2.79, and the other is meant for Blender 2.8x.  It has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.  Also, some features are only available in the 2.8x version.
 
-## Settings:
+## VAMP Settings:
 **Turn On VAMP / VAMP ONCE -** VAMP ONCE will run VAMP just once, for the current setup.  Turn On VAMP is an on/off toggle, and will reprocess the scene once for every frame change, and is meant for use with animations.  Recommended to leave VAMP off, and adjust all of your settings using VAMP ONCE before turning on VAMP.
 
 **Ind Sil Mode -**  Normal silhouette mode takes all meshes, combines them, then calculates an overall silhouette.  Individual Silhouette (Ind Sil) mode will calculate silhouettes for each object in the group.
@@ -78,6 +78,32 @@ Recommended workflow is:
 **Denoise>Limit -** The minimum length allowed for edges in final _flat meshes.  Edges below this length (aka noise) will be filtered out.
 
 **Denoise>Pct** The proportion of noise edges which will be removed. 1.0 is all of those edges, smaller proportions can make an interesting shading effect by retaining some short edges.
+
+## Trace Mode: (2.8 only)
+Trace mode will take the input mesh, generate a list of vertices, then output a curve which traces a path through the vertices.  Vertices can be generated several ways, and output curves can be Bezier or NURBS.  Trace also generates a mesh version of the resulting curve.
+
+Trace determines the sequence of vertices by traversing the mesh, iteratively selecting the nearest vertex to the previous vertex.  This is simplistic, and not necessarily the shortest path between all of the vertices, but it is quick and creates interesting curve paths for further use.  
+
+Trace takes the same input information as VAMP, and will output one curve, _traceFinal, plus _traceFinalMesh, which is a mesh version of the trace results.
+
+**Turn On Trace** If VAMP is on (see above,) Trace will recalculate once for each change in animation frame.  Note: Turn On Trace has NO effect unless VAMP is also on.
+
+**Trace ONCE** Similar to VAMP Once, Trace ONCE will calculate the trace just once, based on the user settings.
+
+**Trace Limit** Limit the total number of vertices used in Trace.  If the origin mesh has more vertices, Trace will still work, but it will only include vertices up to the limit.  
+
+**Trace Mode** Sets the source of vertices for Trace.  Faces (default) will use the centers of polygons in the mesh.  Edges will use centerpoints of all edges, and Verts will just use the input mesh vertices.
+
+**Curve Type** Determines output curve type.  Bezier (default) seems to be more stable, but NURBS is also available.
+
+***Notes:*** 
+- despite requiring the same inputs as VAMP, Trace ignores camera information during analysis.  Trace will analyze and create a path through ALL vertices in the input mesh, whether or not they would be visible from the camera perspective.
+- Trace works best when the origin mesh has at least some complexity for it to analyze and work from.  Broad surfaces are better than intricate details.  Experiment with different levels of subdivision in the input meshes.  
+- Trace calculates the 'shortest path' sequence of vertices each time it runs.  This means that if an input mesh is animated, Trace may calculate a different vertex sequence, so the resulting trace may snap visually around during animation.  This is expected. 
+
+## Reload Script (2.8 only)
+Occasionally, VAMP will stop working properly.  This is most noticeable when using in conjunction with other add-ons, such as Oscistudio or Animation Nodes.  Reload Script will reload VAMP from disk, and also re-register the application handlers.
+
 
 ### Cautions & FAQs:
 - VAMP is meant for relatively simple meshes.  Complex meshes (thousands of vertices) may choke it, depending on your PC's power.  Save your work!
