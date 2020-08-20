@@ -28,19 +28,10 @@ VAMP was built for use with [OsciStudio](https://oscilloscopemusic.com/oscistudi
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  _flat meshes are the same meshes, but with vertices remapped onto the flat XY plane.
 
-## Using with Oscistudio
-Recommended workflow is: 
-- Create objects and camera animation in blender
-- Simplify origin meshes wherever possible. SAVE your work!
-- Enable VAMP, adjust settings to optimize final mesh.
-- Hide all objects in scene except for _flatSliced and _flatSilhouette.
-- Connect to Oscistudio, confirm that mesh is visible. Oscistudio default un-rotated view should display _flat meshes cleanly.
-- Send Animation to Oscistudio
-
 **Note:** There are two versions of VAMP. One works with Blender 2.79, and the other is meant for Blender 2.8x.  It has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.  Also, some features are only available in the 2.8x version.
 
 ## VAMP Settings:
-**Turn On VAMP / VAMP ONCE -** VAMP ONCE will run VAMP just once, for the current setup.  Turn On VAMP is an on/off toggle, and will reprocess the scene once for every frame change, and is meant for use with animations.  Recommended to leave VAMP off, and adjust all of your settings using VAMP ONCE before turning on VAMP.
+**Turn On VAMP / VAMP ONCE -** VAMP ONCE will run VAMP just once, for the current setup.  Turn On VAMP is an on/off toggle, and will reprocess the scene once for every frame change, and is meant for use with animations.  Recommended to leave VAMP off, and adjust all of your settings using VAMP ONCE before turning on VAMP.  Note: If Turn On VAMP doesn't seem to be updating with each frame in an animation, click the "Reload Script" button and try again (see below.)
 
 **Ind Sil Mode -**  Normal silhouette mode takes all meshes, combines them, then calculates an overall silhouette.  Individual Silhouette (Ind Sil) mode will calculate silhouettes for each object in the group.
 
@@ -49,7 +40,7 @@ Recommended workflow is:
 - Front -  all objects in front of the camera plane, regardless of whether they're visible within the camera frame.  
 - Frame - dislpay ONLY objects visible within camera frame.  
 
-**Freestyle -**  Normal mode will display ALL visible edges when calculating _slicedFinal.  Freestyle mode will display only those edges which have been marked as Freestyle Edges in mesh edit.  Useful for simplifying results while maintaining some form.
+**Freestyle -**  Normal mode will display ALL visible edges when calculating _slicedFinal.  Freestyle mode will display only those edges which have been marked as Freestyle Edges or Sharp Edges in mesh edit.  Useful for simplifying results while maintaining some form.
 
 **Freestyle>Creases -** (2.8 only) When Freestyle is selected, will also include all edges with interior angles up to the indicated angle.  Intended to behave like [Freestyle crease mode](https://docs.blender.org/manual/en/latest/render/freestyle/parameter_editor/line_style/modifiers/alpha/crease_angle.html) 
 
@@ -104,6 +95,14 @@ Trace takes the same input information as VAMP, and will output one curve, _trac
 ## Reload Script (2.8 only)
 Occasionally, VAMP will stop working properly.  This is most noticeable when using in conjunction with other add-ons, such as Oscistudio or Animation Nodes.  Reload Script will reload VAMP from disk, and also re-register the application handlers.
 
+## Using with Oscistudio
+Recommended workflow is: 
+- Create objects and camera animation in blender
+- Simplify origin meshes wherever possible. SAVE your work!
+- Enable VAMP, adjust settings to optimize final mesh.
+- Hide all objects in scene except for _flatSliced and _flatSilhouette.
+- Connect to Oscistudio, confirm that mesh is visible. Oscistudio default un-rotated view should display _flat meshes cleanly.
+- Send Animation to Oscistudio
 
 ### Cautions & FAQs:
 - VAMP is meant for relatively simple meshes.  Complex meshes (thousands of vertices) may choke it, depending on your PC's power.  Save your work!
@@ -115,7 +114,8 @@ Occasionally, VAMP will stop working properly.  This is most noticeable when usi
    3. the Vamp collection name is entered into the VAMP settings panel
    4. the Edge Limit is set higher than the number of vertices in your meshes
    5. Cull and Raycast limits are sufficiently large for your model.
-   
+
+
 ### Installing VAMP
 - VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8x.  
 - To install, 
