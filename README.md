@@ -28,7 +28,7 @@ VAMP was built for use with [OsciStudio](https://oscilloscopemusic.com/oscistudi
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  _flat meshes are the same meshes, but with vertices remapped onto the flat XY plane.
 
-**Note:** There are two versions of VAMP. One works with Blender 2.79, and the other is meant for Blender 2.8x.  It has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.  Also, some features are only available in the 2.8x version.
+**Note:** There are two versions of VAMP. One works with Blender 2.79, and the other is meant for Blender 2.8+.  It has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.  Also, some features are only available in the 2.8+ version.
 
 ## VAMP Settings:
 **Turn On VAMP / VAMP ONCE -** VAMP ONCE will run VAMP just once, for the current setup.  Turn On VAMP is an on/off toggle, and will reprocess the scene once for every frame change, and is meant for use with animations.  Recommended to leave VAMP off, and adjust all of your settings using VAMP ONCE before turning on VAMP.  Note: If Turn On VAMP doesn't seem to be updating with each frame in an animation, click the "Reload Script" button and try again (see below.)
@@ -42,7 +42,7 @@ VAMP takes input meshes, then subdivides edges into smaller subedges.  Using ray
 
 **Freestyle -**  Normal mode will display ALL visible edges when calculating _slicedFinal.  Freestyle mode will display only those edges which have been marked as Freestyle Edges or Sharp Edges in mesh edit.  Useful for simplifying results while maintaining some form.
 
-**Freestyle>Creases -** (2.8 only) When Freestyle is selected, will also include all edges with interior angles up to the indicated angle.  Intended to behave like [Freestyle crease mode](https://docs.blender.org/manual/en/latest/render/freestyle/parameter_editor/line_style/modifiers/alpha/crease_angle.html) 
+**Freestyle>Creases -** (2.8+ only) When Freestyle is selected, will also include all edges with interior angles up to the indicated angle.  Intended to behave like [Freestyle crease mode](https://docs.blender.org/manual/en/latest/render/freestyle/parameter_editor/line_style/modifiers/alpha/crease_angle.html) 
 
 **Lim** - If using Freestyle crease mode, set the angle limit to flag creases.  The larger the number, the more edges will be displayed.  Selecting 180 is the same as including all edges on flat surfaces. 
 
@@ -56,7 +56,7 @@ VAMP takes input meshes, then subdivides edges into smaller subedges.  Using ray
 
 **Min length -** The minimum length for any subedge.  This avoids very small source edges being subdivided.
 
-**Cull -** (2.8 only) Sets a maximum distance for *objects* to be included in VAMP output.  Very useful for large scenes.  When Cull is turned on, VAMP will only include objects which are within a set radius from the camera.
+**Cull -** (2.8+ only) Sets a maximum distance for *objects* to be included in VAMP output.  Very useful for large scenes.  When Cull is turned on, VAMP will only include objects which are within a set radius from the camera.
 
 **Cull>Distance -** Radius setting for Cull feature.
 
@@ -70,7 +70,7 @@ VAMP takes input meshes, then subdivides edges into smaller subedges.  Using ray
 
 **Denoise>Pct** The proportion of noise edges which will be removed. 1.0 is all of those edges, smaller proportions can make an interesting shading effect by retaining some short edges.
 
-## Trace Mode: (2.8 only)
+## Trace Mode: (2.8+ only)
 Trace mode will take the input mesh, generate a list of vertices, then output a curve which traces a path through the vertices.  Vertices can be generated several ways, and output curves can be Bezier or NURBS.  Trace also generates a mesh version of the resulting curve.
 
 Trace determines the sequence of vertices by traversing the mesh, iteratively selecting the nearest vertex to the previous vertex.  This is simplistic, and not necessarily the shortest path between all of the vertices, but it is quick and creates interesting curve paths for further use.  
@@ -117,7 +117,7 @@ Recommended workflow is:
 
 
 ### Installing VAMP
-- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8x.  
+- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+.  It has been tested and is stable for use with Blender 2.83 LTS and 2.93 LTS.  
 - To install, 
   - Download vamp_283.zip and save to your desktop.  
   - Within Blender, go to Edit\Preferences\Add-ons, then select Install.  
@@ -125,7 +125,7 @@ Recommended workflow is:
   - After installing, enable vamp_283 in the list of add-ons.  
   - You should see the VAMP Settings panel now, under the Render properties tab.  
 
- * There is also an older version of this add-on which works with Blender 2.79. Download vamp_279.zip.
+ * There is also an older version of this add-on which works with Blender 2.79. Download vamp_279.zip and install using instructions above.
   
 ### META
 
