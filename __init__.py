@@ -1,7 +1,7 @@
 bl_info = {
-    "name": "vamp_283",
+    "name": "vamp_293",
     "author": "Chris Allen", 
-    "version": (1, 1, 4),
+    "version": (1, 2, 0),
     "blender": (2, 80, 0),
     "location": "View3D",
     "description": "VAMP: Vector Art Motion Processor. Removes back faces.",
@@ -10,10 +10,12 @@ bl_info = {
     "category": "Development",
 }
 
-# GOOD TUT: https://blender.stackexchange.com/questions/57306/how-to-create-a-custom-ui
+# new 2.93 version:
+# - can now use Grease Pencil Line Art as input. Some error checking to ensure GP is baked.
+# - output is contained into _vampOutput collection
+# this version still compatible w/ 2.8x, but GP Line Art feature only available from 2.93 onward. 
 
-# updated from vamp_279
-# based on https://theduckcow.com/2019/update-addons-both-blender-28-and-27-support/
+# GOOD TUT: https://blender.stackexchange.com/questions/57306/how-to-create-a-custom-ui
 
 import bpy
 import importlib, sys
@@ -67,17 +69,17 @@ class VampProperties(PropertyGroup):
     )   
     vamp_cast_sensitivity: FloatProperty(
         name="Hit Test Offset",
-        min = 0.005,
-        max = 0.1,
+        min = 0.0005,
+        max = 0.0005,
         default = 0.02,
-        precision = 3
+        precision = 4
     )
     vamp_raycast_dist: IntProperty(
         name = "Raycast Distance",
         soft_min = 1,
         soft_max = 100,
         description = "Hit testing distance.",
-        default = 10
+        default = 50
     )
     vamp_cull: BoolProperty(
         name = "Cull",
@@ -90,11 +92,6 @@ class VampProperties(PropertyGroup):
         soft_max = 100,
         description = "Cull distance.",
         default = 10
-    )
-    vamp_crop: BoolProperty(
-        name = "Crop",
-        default = True,
-        description = "Limit output to camera frame?"
     )
     vamp_crop_options = [
         ("None","None","No cropping (fastest)",2),
@@ -150,7 +147,7 @@ class VampProperties(PropertyGroup):
         name = "Min length",
         soft_min = 0.005,
         soft_max = 2.0,
-        default = 0.2,
+        default = 0.005,
         precision = 3
     )
     
@@ -169,7 +166,10 @@ class VampProperties(PropertyGroup):
     vamp_trace_options = [
         ("Verts","Verts","Use All Verts",0),
         ("Edges","Edges","Trace Edge Centers",1),
-        ("Faces","Faces","Trace Face Centers",2)
+        ("Faces","Faces","Trace Face Centers",2),
+        ("FlatSil","FlatSil","Trace Flat Silhouette",3),
+        ("FlatSliced","FlatSliced","Trace Flat Sliced",4)
+        
     ]          
     vamp_trace_enum: EnumProperty(
         items = vamp_trace_options,
@@ -198,55 +198,81 @@ def item_check():
     global err_text
     scene = bpy.data.scenes[0]
     target_name = bpy.context.scene.vamp_params.vamp_target
-    if bpy.data.collections.get(target_name) is not None:
-        if len(bpy.data.collections[target_name].objects) > 0:
-            if scene.camera is not None:
-                cam = scene.camera
-                return True
-            else:
-                print('no camera found')
-                err_text = 'No camera found.'  
-                return False
-        else:
-            print('no objects found in VAMP collection')
-            err_text = 'No objects in VAMP collection.'  
-            return False
-    else:
+    # test for fail conditions
+    #confirm that named vamp collection exists
+    if bpy.data.collections.get(target_name) is None:
         print('no object collection found')
         err_text = 'VAMP collection not found.'  
         return False
+    #confirm contents of vamp collection > 0
+    if len(bpy.data.collections[target_name].objects) == 0:
+        print('no objects found in VAMP collection')
+        err_text = 'No objects in VAMP collection.'  
+        return False 
+    #confirm that there are no unbaked LineArt GP's in the collection
+    for obj in bpy.data.collections[target_name].objects:
+        if obj.type == 'GPENCIL':
+            mod_count = len(obj.grease_pencil_modifiers)
+            print('There are ',mod_count,' modifiers.')
+            for mod in obj.grease_pencil_modifiers:
+                if (mod.name == 'Line Art') and (mod.is_baked is False):
+                    # need to throw error and quit.
+                    print('Grease Pencil objects must be Baked before using')
+                    err_text = 'Grease Pencil objects must be Baked'  
+                    return False   
+    #confirm that there is a scene camera
+    if scene.camera is None:   
+        print('no camera found')
+        err_text = 'No camera found.'  
+        return False
+    else:
+        cam = scene.camera
+    return True
     
 def clean_up_first():
     global empty_mesh
     global scene  
     target_name = bpy.context.scene.vamp_params.vamp_target    
+    # if needed, create _vampOutput collection
+    if bpy.data.collections.get('_vampOutput') is None: 
+        newcoll = bpy.data.collections.new(name='_vampOutput')
+    vamp_coll = bpy.data.collections.get('_vampOutput')
+    try:
+        bpy.context.scene.collection.children.link(vamp_coll)
+    except RuntimeError:
+        pass      
     #now, create new empty objects 
     empty_mesh = bpy.data.meshes.new('empty_mesh') 
     empty_curve = bpy.data.curves.new('empty_curve','CURVE')
     scene = bpy.context.scene
     if bpy.data.objects.get('_slicedFinal') is None:
         newobj = bpy.data.objects.new(name='_slicedFinal',object_data = empty_mesh.copy())
-        bpy.context.scene.collection.objects.link(newobj)       
     if bpy.data.objects.get('_silhouetteFinal') is None:
         newobj = bpy.data.objects.new(name='_silhouetteFinal',object_data = empty_mesh.copy())
-        bpy.context.scene.collection.objects.link(newobj) 
     if bpy.data.objects.get('_flatSliced') is None:
         newobj = bpy.data.objects.new(name='_flatSliced',object_data = empty_mesh.copy())
-        bpy.context.scene.collection.objects.link(newobj)
     if bpy.data.objects.get('_flatSilhouette') is None:
         newobj = bpy.data.objects.new(name='_flatSilhouette',object_data = empty_mesh.copy())
-        bpy.context.scene.collection.objects.link(newobj) 
     if bpy.data.objects.get('_traceFinalMesh') is None:
         newobj = bpy.data.objects.new(name='_traceFinalMesh',object_data = empty_mesh.copy())
-        bpy.context.scene.collection.objects.link(newobj)         
     if bpy.data.objects.get('_traceFinal') is None:
         newobj = bpy.data.objects.new(name='_traceFinal',object_data = empty_curve.copy())
-        bpy.context.scene.collection.objects.link(newobj)           
     #now remove empty mesh & empty curve
     bpy.data.meshes.remove(empty_mesh, do_unlink=True)
-    bpy.data.curves.remove(empty_curve, do_unlink=True)    
+    bpy.data.curves.remove(empty_curve, do_unlink=True)   
+    # link all output objects into vamp output collection
+    obj_list = ('_slicedFinal','_silhouetteFinal','_flatSliced','_flatSilhouette','_traceFinalMesh','_traceFinal')    
+    for obj_name in obj_list:
+        obj = bpy.data.objects.get(obj_name)
+        try:
+            vamp_coll.objects.link(obj)
+        except RuntimeError:
+            pass 
+        try:
+            bpy.context.scene.collection.objects.unlink(obj)  
+        except RuntimeError:
+            pass         
     return {'FINISHED'}
-
     
 def join_bmeshes(bmesh_list):
     # combine multiple bmeshes into a single bmesh
@@ -255,49 +281,98 @@ def join_bmeshes(bmesh_list):
     for bm in bmesh_list:
         temp_mesh = bpy.data.meshes.new(name='temp_mesh')
         bm.to_mesh(temp_mesh)
-        joined_bmesh.from_mesh(temp_mesh) # appends transformed data to the bmesh        
-    # returns bmesh
-    return joined_bmesh
-
+        joined_bmesh.from_mesh(temp_mesh) # appends transformed data to the bmesh         
+    # returns bmesh 
+    return joined_bmesh 
+ 
 def get_eval_mesh(obj):
+    #print('get_eval_mesh for ',obj.name)
     # evaluate object, which applies all modifiers
     #new method in 2.83, see https://docs.blender.org/api/current/bpy.types.Depsgraph.html
     #also see https://developer.blender.org/T64735#681264
     depsgraph = bpy.context.evaluated_depsgraph_get()
     object_eval = obj.evaluated_get(depsgraph)
-    data_copy = bpy.data.meshes.new_from_object(object_eval)
-    # also need to transform origin mesh, else they'll all be at 0,0,0
-    the_matrix = obj.matrix_world        
-    data_copy.transform(the_matrix) # transform mesh using source object transforms       
-    return data_copy
-
+    if(obj.type) in ['MESH','CURVE']:
+        # this method only works for meshes and curves. need alt method for GPENCIL objects.
+        #print('This object is a MESH or CURVE') 
+        data_copy = bpy.data.meshes.new_from_object(object_eval)
+        # also need to transform origin mesh, else they'll all be at 0,0,0
+        the_matrix = obj.matrix_world        
+        data_copy.transform(the_matrix) # transform mesh using source object transforms  
+        return data_copy        
+    else: 
+        #this is a GPENCIL object (by process of elimination)
+        #print('This object is a GPENCIL')
+        #TODO: confirm that this is a GPENCIL object...
+        #if obj.type != 'GPENCIL':
+        #    print('Weird Object in VAMP Target Collection')
+        #    err_text = 'Please only use MESH, CURVE or GREASE PENCIL objects in VAMP target collection.'  
+        #    return False   
+        current_frame = scene.frame_current
+        gp = bpy.data.grease_pencils[0] # currently limited to just one GP object per project.
+        the_strokes = gp.layers.active.frames.data.frames.data.active_frame.strokes
+        
+        # create new curve based on points..
+        # see https://blender.stackexchange.com/questions/120074/how-to-make-a-curve-path-from-scratch-given-a-list-of-x-y-z-points
+        # coords_list = str.points
+        
+        # make a new curve
+        crv = bpy.data.curves.new(name='tempcurve', type='CURVE')  
+        crv.dimensions = '3D'   
+        
+        for str in the_strokes:
+            #print(str)
+            # for each stroke, make a new spline in that curve
+            #spline = crv.splines.new(type='NURBS') # nurbs makes curvy lines. Might be a nice option
+            spline = crv.splines.new(type='POLY') #sharp edges, good for hard surfaces & low poly            
+            # make room for a spline point for each GP stroke point
+            spline.points.add(len(str.points)-1) # there's already one point by default            
+            # assign the point coordinates to the spline points
+            #make a spline for each stroke
+            for num, pt in enumerate(str.points):
+                spline.points[num].co[0] = pt.co[0]
+                spline.points[num].co[1] = pt.co[1]
+                spline.points[num].co[2] = pt.co[2]    
+                spline.points[num].co[3] = 1   # needed for vertex 'weight'                
+        #crv data now exists, but need to convert it into mesh, then transform using world matrix.
+        GPCurvObj = bpy.data.objects.new(name='c',object_data = crv) # temporary object to facilitate output, will be deleted momentarily...
+        bpy.context.scene.collection.objects.link(GPCurvObj)  
+        data_copy = bpy.data.meshes.new_from_object(GPCurvObj)        
+        the_matrix = obj.matrix_world        
+        data_copy.transform(the_matrix) # transform mesh using source object transforms.  For generated GP objects, this s/b world origin.  
+        objs=bpy.data.objects
+        objs.remove(GPCurvObj, do_unlink=True)
+        return data_copy
+        
+    
 def in_range(obj):
     #used with culling.  Identifies whether object origins are within culling range
     global cam
     cam_loc = cam.matrix_world.decompose()[0]
     obj_loc = obj.matrix_world.decompose()[0]
     cull_dist = bpy.context.scene.vamp_params.vamp_cull_dist
-    if bpy.context.scene.vamp_params.vamp_cull == True:
-        cull_it = 1
-    else:
-        cull_it = 0    
-    if(cull_dist > (distance(obj_loc,cam_loc) * cull_it)):
+    if bpy.context.scene.vamp_params.vamp_cull == False:
         return True
-    else:
-        return False
+    else:    
+        if(distance(obj_loc,cam_loc) < cull_dist):
+            return True
+        else:
+            return False
         
 def mark_inrange():
     #used with culling. Generates a list of objects within culling radius from camera
     global inrange_objs
     #inrange_objs = []
     target_name = bpy.context.scene.vamp_params.vamp_target
-    ok_types = ['MESH','CURVE']
+    ok_types = ['MESH','CURVE','GPENCIL']
     for obj in bpy.data.collections[target_name].objects:
         TheType = obj.type
         if((in_range(obj)) and (TheType in ok_types)):
             obj["vamp_inrange"] = True
+            print('tested object is in range')
         else:
-            obj["vamp_inrange"] = False            
+            obj["vamp_inrange"] = False    
+            print('tested object (',obj,') is wrong type, or is not in range')            
     inrange_objs = [obj for obj in bpy.data.collections[target_name].objects if obj["vamp_inrange"] == True]
     print('inrange_objs count: ',len(inrange_objs))    
     
@@ -310,9 +385,16 @@ def get_all_the_stuff():
     bm_all = bmesh.new()
     new_edges=0
     for obj in inrange_objs:
-        data_copy=get_eval_mesh(obj)  
-        new_edges += len(data_copy.edges)
-        bm_all.from_mesh(data_copy) # appends transformed data to the bmesh
+        data_copy=get_eval_mesh(obj)
+        if data_copy:
+            new_edges += len(data_copy.edges)
+            bm_all.from_mesh(data_copy) # appends transformed data to the bmesh
+        else:
+            #something went wrong when getting data_copy. Abort.
+            print('fail. exiting get_all_the_stuff')
+            err_text = 'Something went wrong. Aborting. Check System Console.'  
+            return False                
+    
     original_edge_count=new_edges # will test against edge limit. if too high, just quit.
     # bm_all now contains bmesh containing all data we need for next step
     # we will also use it later for BVHTree hit testing     
@@ -494,7 +576,8 @@ def hit_test_bvh(originV,targetV,the_bvh):
             # confirm that vertex is visible, within view cone & range of camera
             if (co_ndc[0] >= 0) and (co_ndc[0] <= 1) and \
             (co_ndc[1] >= 0) and (co_ndc[1] <= 1) and \
-            (co_ndc[2] > 0) and (co_ndc[2] <= ray_dist):
+            (co_ndc[2] > 0):            
+            #(co_ndc[2] > 0) and (co_ndc[2] <= ray_dist): # removed ray dist test, was causing confusion w. Cull behavior.
                 return False # vert within camera view
             else:
                 return True # vert outside of camera view, treat like a hit and exclude from all views    
@@ -504,7 +587,7 @@ def get_slicestuff(bm_test, bm_mask):
     # inputs: bm_test, bm_mask
     # outputs: bm_slice, bm_sil
     global cam
-    global bm_sil
+    global c
     edge_sub_unit = bpy.context.scene.vamp_params.vamp_edge_subdiv # min length of subd
     subedge_limit = bpy.context.scene.vamp_params.vamp_subd_limit # max # of subd cuts
 
@@ -814,6 +897,7 @@ def MidpointVecs(vec1, vec2):
     return vec
     
 def main_trace_routine():
+    global bm_sil
     print('=== main_trace_routine() ====')
     clean_up_first()
     
@@ -834,14 +918,70 @@ def main_trace_routine():
     inputVecs = []
     outputVecs = []
 
-    #if output mode is vectors, use all vectors. otherwise use face centers. 
+    #map output mode to procedure. 
     if  trace_mode == 'Verts':
         rawInputVecs = [vert.co for vert in bm_all_trace.verts]
     elif trace_mode == 'Edges':
     # from https://www.blender.org/forum/viewtopic.php?t=26018
         rawInputVecs = [Vector((edge3.verts[0].co+edge3.verts[1].co)/2) for edge3 in bm_all_trace.edges]
-    else:
-        rawInputVecs = [face.calc_center_median() for face in bm_all_trace.faces]
+    elif trace_mode == 'Faces':
+        rawInputVecs = [face.calc_center_median() for face in bm_all_trace.faces] 
+    ### flatSil mode: will take Silhouette as input, subdivide edges again to provide vertices to trace, then trace edges sequentially    
+    elif trace_mode == 'FlatSil':
+        if bpy.data.objects.get('_flatSilhouette') is None:
+            rawInputVecs = [vert.co for vert in bm_all_trace.verts]
+        else:
+            flatSil = bpy.data.objects.get('_flatSilhouette')
+            bm_sil_trace = bmesh.new()
+            data_copy=get_eval_mesh(flatSil)
+            bm_sil_trace.from_mesh(data_copy)
+            # interpolate verts between end points of edges in silhouette mesh
+            rawInputVecs = [Vector(edge3.verts[0].co) for edge3 in bm_sil_trace.edges]
+            endVecs = [Vector(edge3.verts[1].co) for edge3 in bm_sil_trace.edges]
+            midVecs = [Vector((edge3.verts[0].co+edge3.verts[1].co)/2) for edge3 in bm_sil_trace.edges] 
+            rawInputVecs.extend(endVecs)
+            rawInputVecs.extend(midVecs)  
+    ### FlatSliced mode: will take Flat Sliced final as input, subdivide edges again to provide vertices to trace, then trace edges sequentially    
+    elif trace_mode == 'FlatSliced':
+        if bpy.data.objects.get('_flatSliced') is None:
+            rawInputVecs = [vert.co for vert in bm_all_trace.verts]
+        else:
+            #flatSil = bpy.data.objects.get('_flatSilhouette')
+            flatSliced = bpy.data.objects.get('_flatSliced')
+            bm_sliced_trace = bmesh.new()
+            data_copy=get_eval_mesh(flatSliced)
+            bm_sliced_trace.from_mesh(data_copy)
+            # interpolate verts between end points of edges in silhouette mesh
+            rawInputVecs = [Vector(edge3.verts[0].co) for edge3 in bm_sliced_trace.edges]
+            endVecs = [Vector(edge3.verts[1].co) for edge3 in bm_sliced_trace.edges]
+            midVecs = [Vector((edge3.verts[0].co+edge3.verts[1].co)/2) for edge3 in bm_sliced_trace.edges] 
+            rawInputVecs.extend(endVecs)
+            rawInputVecs.extend(midVecs)                      
+### flatSil mode: will take Silhouette as input, subdivide edges again to provide vertices to trace, then trace edges sequentially        
+    else: #it's flatSil mode. Just use results of flat silhouette.
+        if bpy.data.objects.get('_flatSilhouette') is None:
+            rawInputVecs = [vert.co for vert in bm_all_trace.verts]
+        else:
+            #flatSil = bpy.data.objects.get('_flatSilhouette')
+            flatSil = bpy.data.objects.get('_flatSliced')
+            bm_sil_trace = bmesh.new()
+            data_copy=get_eval_mesh(flatSil)
+            bm_sil_trace.from_mesh(data_copy)
+            # interpolate verts between end points of edges in silhouette mesh
+            rawInputVecs = [Vector(edge3.verts[0].co) for edge3 in bm_sil_trace.edges]
+            endVecs = [Vector(edge3.verts[1].co) for edge3 in bm_sil_trace.edges]
+            midVecs = [Vector((edge3.verts[0].co+edge3.verts[1].co)/2) for edge3 in bm_sil_trace.edges] 
+            rawInputVecs.extend(endVecs)
+            rawInputVecs.extend(midVecs)
+            
+            # need to subdivide edges, else it will not trace well...
+            
+            #rawInputVecs = [vert.co for vert in bm_sil_trace.verts]
+            #bm_sil_flat = flatten_bm(bm_sil)
+            #rawInputVecs = [vert.co for vert in bm_sil_flat.verts]
+            #bm_sil_trace
+        
+        
     if len(rawInputVecs) == 0:
         #nothing in range. just quit.
         print('no faces in origin obj. quitting.')
@@ -1003,7 +1143,7 @@ class OBJECT_OT_reloadme(bpy.types.Operator):
     bl_idname = "render.vamp_reloadme"
     bl_description = "Reload VAMP Script"           
     def execute(self, context):  
-        module_name = "vamp_283"   
+        module_name = "vamp_293"   
         mod = sys.modules.get(module_name)
         importlib.reload(mod)  
         re_reg_handler()
@@ -1098,7 +1238,12 @@ class Vamp_PT_Panel(bpy.types.Panel):
         # reload this script, re-register app handler
         layout.operator("render.vamp_reloadme", text="Reload Script")
         
-        
+class ExitOK(Exception):
+    # from https://blender.stackexchange.com/questions/6782/python-command-within-script-to-abort-without-killing-blender
+    # usage:  raise ExitOK # quit script immediately
+    #print('aborting')
+    pass
+     
 
 
 def vamp_handler(scene):    
@@ -1126,7 +1271,7 @@ def re_reg_handler():
     #avoiding dup handlers:
     #  https://blender.stackexchange.com/questions/146837/how-do-i-properly-update-an-application-handler 
     
-    handler_key = 'VAMP_283_KEY'
+    handler_key = 'VAMP_293_KEY'
     
     old_vamp_handlers = [h for h in bpy.app.handlers.frame_change_pre
         if h.__name__ == handler_key]
@@ -1149,7 +1294,13 @@ def register():
  
 def unregister():
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)    
+        # bpy.utils.unregister_class(cls)  
+        # polite deregister, per https://blenderartists.org/t/find-out-if-a-class-is-registered/602335
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass    
+           
 
 if __name__ == "__main__":
    register()
