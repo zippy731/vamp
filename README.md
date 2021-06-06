@@ -31,7 +31,7 @@ VAMP was built for use with [OsciStudio](https://oscilloscopemusic.com/oscistudi
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  \_flat meshes are the same meshes, but with vertices remapped onto the flat XY plane, for a top-down view.  The \_flat meshes are intended for use with OsciStudio
 
-**Note:** VAMP is meant for use with Blender 2.8+. and the other is meant for Blender 2.8+.  It has been tested extensively with Oscistudio 5.5.  Even so, it crashes Blender OFTEN, so save your work.  There is an older version which works with Blender 2.79, but that is no longer being developed and some features are not included. 
+**Note:** VAMP is meant for use with Blender 2.8x and 2.9x.  It has been tested extensively with Oscistudio 5.5.  Even so, it will sometimes crash Blender, so save your work.  There is an older version of VAMP which works with Blender 2.79, but that is no longer being developed and some features are not included. 
 
 ## VAMP Settings:
 **Turn On VAMP / VAMP ONCE -** VAMP ONCE will run VAMP just once, for the current setup.  Turn On VAMP is an on/off toggle, and will reprocess the scene once for every frame change, and is meant for use with animations.  Recommended to leave VAMP off, and adjust all of your settings using VAMP ONCE before turning on VAMP.  Note: If Turn On VAMP doesn't seem to be updating with each frame in an animation, click the "Reload Script" button and try again (see below.)
@@ -86,7 +86,7 @@ Trace takes the same input information as VAMP, and will output one curve, \_tra
 
 **Trace Limit** Limit the total number of vertices used in Trace.  If the origin mesh has more vertices, Trace will still work, but it will only include vertices up to the limit.  
 
-**Trace Mode** Sets the source of vertices for Trace.  Faces (default) will use the centers of polygons in the mesh.  Edges will use centerpoints of all edges, and Verts will just use the input mesh vertices.  FlatSliced and FlatSilhouette will use the respective results of VAMP as the input to the trace algorithm.
+**Trace Mode** Sets the source of vertices for Trace.  Faces (default) will use the centers of polygons in the mesh.  Edges will use centerpoints of all edges, and Verts will just use the input mesh vertices.  FlatSliced and FlatSilhouette will use those respective results of VAMP as the input to the trace algorithm.
 
 **Curve Type** Determines output curve type.  Bezier (default) seems to be more stable, but NURBS is also available.
 
@@ -108,25 +108,25 @@ Recommended workflow is:
 - Send Animation to Oscistudio
 
 ## Using with Grease Pencil Line Art (Blender 2.93 onward)
-Beginning with the Blender 2.93 release, Grease Pencil (GP) now has the ability to create intricate line drawings from existing geometry, using the [Grease Pencil Line Art (GPLA) modifier](https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html).  The GPLA modifier creates drawings from edges, accounting for marked feature lines, creases, and contours, and calculating occlusion correctly.  This new Blender feature is quite similar to the original core function of VAMP, and is far faster as it is a native Blender feature.  
+Beginning with the Blender 2.93 release, Grease Pencil (GP) now has the ability to create intricate line drawings from existing geometry, using the [Grease Pencil Line Art (GPLA) modifier](https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html).  The GPLA modifier creates drawings from edges, accounting for marked feature lines, creases, and contours, and calculating occlusion correctly.  This new Blender feature is quite similar to the original core function of VAMP, and is much faster as it is a native Blender feature.  
 
 VAMP can take these GPLA drawings as an input, and process and reformat them for output to OsciStudio.  Using VAMP with GPLA takes a bit of planning, but can yield some terrific results.
 
 Recommended workflow for use with GPLA is:
 - Create scene as usual.  Adjust the camera for the angle of view you desire.
 - Move target mesh objects into a single new collection (e.g. GPInput)
-- Create a new GP Collection Line Art object.  It will take a moment, but the GPLA should draw nice outlines of your object(s)
- - If you do not see lines immediately, make sure your camera is set correctly. GPLA will not work without a camera. 
- - Note that GPLA is based on visible objects, so if you hide the target objects, GPLA may exclude them from the final output.  For better visibility, you can set the Viewport Visibility of the Grease Pencil object to 'front'.  
+- Create a new GP Collection Line Art object.  In the new GP object, specify the target collection in the GPLA modifier.  It will take a moment, but the GPLA should draw nice outlines of your object(s)
+ - If you do not see lines immediately, make sure your camera is set correctly. GPLA will not work without a camera. For better visibility of the lines, you can set the Viewport Visibility of the GP object to 'front'.  
+ - Note that GPLA is based on visible objects, so if you hide the target objects, GPLA may exclude them from the final output.  
  - Tweak the settings in GPLA modifier to your liking.
  - Once you are happy with the GPLA results, BAKE the results (In the GPLA modifier tab, Baking subpanel is at the very bottom.)
 - Move the GP object into a new collection (e.g. VAMPinput)
 - In VAMP, set the VAMP Target to the name of the newly created collection which contains the GP object.  
-- Click VAMP Once.  If VAMP worked properly, a new Collection of \_vampOutput objects will be created.  
+- Click VAMP Once.  If VAMP worked properly, a new collection of \_vampOutput objects will be created.  
 - VAMP may be used normally beyond this point.
 
 Notes about GPLA usage
-- Performance: Because most of the edge/occlusion calculations are being done by GPLA (rather than VAMP,) GPLA is MUCH faster than VAMP.  Also, because the GPLA output is a simple object with lines/curves and no faces, many of the VAMP settings will have no effect on the output.  It is recommended that you leave the VAMP Cuts per Edge = 2.  VAMP Denoise will still have an effect, and is a useful way to simplify complex GPLA meshes.
+- Performance: Because most of the edge/occlusion calculations are being done by GPLA (rather than VAMP,) GPLA is MUCH faster than VAMP.  Also, because the GPLA output is a simple object with lines/curves and no faces, many of the VAMP settings will have no effect on the output.  It is recommended that you leave the VAMP Cuts per Edge = 2, for speed.  VAMP Denoise will still have an effect, and is a useful way to simplify complex GPLA meshes.
 - GP modifiers: Some GP object modifiers placed AFTER the GPLA modifier DO NOT seem to affect the data that is sent to VAMP.  Notably, the 'simplify' GP modifier does not seem to work as expected. This is a known issue, and I recommend you use the VAMP Denoise feature for similar benefits.  Other GP modifiers do seem to work normally.  Experiment with other GP modifiers to see what best suits your needs.
 - Do not mix GPLA and mesh/curve objects: GPLA and other object types should not be combined, and VAMP can only handle a single GPLA object.
 
@@ -143,13 +143,13 @@ Notes about GPLA usage
 
 
 ### Installing VAMP
-- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+.  It has been tested and is stable for use with Blender 2.83 LTS and 2.93 LTS.  
+- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+ and 2.93.  It has been tested and is stable for use with Blender 2.83 LTS and 2.93 LTS.  
 - To install, 
   - Download the contents of this repository to your desktop.  It is the master file, and contains the installer, an older version, and this version.
   - From the master zip, extract vamp_293.zip and save to your desktop.  Leave it as a zip file.  
   - Within Blender, go to Edit\Preferences\Add-ons
-   - (If you have any previous versions of VAMP, you should disable and remove them  )
-  - Install new VAMP: Browse to the vamp_293.zip file and click Install.  
+   - (If you have any previous versions of VAMP, you should disable and remove them now)
+  - Within the Add-on menu, install new VAMP: Browse to the vamp_293.zip file and click Install.  
   - After installing, enable vamp_293 in the list of add-ons.  
   - You should see the VAMP Settings panel now, under the Render properties tab.  
 
