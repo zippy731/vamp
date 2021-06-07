@@ -26,7 +26,17 @@ VAMP was built for use with [OsciStudio](https://oscilloscopemusic.com/oscistudi
     - _traceFinal and _traceFinalMesh are initially empty, and will be used by the trace function, described below.
   - **Turn On VAMP** will **VAMP ONCE** for every frame change in the timeline.
 
-### Tutorial Video:  https://youtu.be/9H-l_qkF8OI
+### Tutorial Videos (updated for 2.93 version):
+Part 1 - VAMP Setup and Usage
+https://youtu.be/OytuO1ImTd0
+
+Part 2 - VAMP Usage with Grease Pencil Line Art
+https://youtu.be/Rgv6X14iTGQ
+
+Part 3 - VAMP Trace mode 
+https://youtu.be/lnhQnsjQx6o
+
+
 
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  \_flat meshes are the same meshes, but with vertices remapped onto the flat XY plane, for a top-down view.  The \_flat meshes are intended for use with OsciStudio
@@ -153,7 +163,7 @@ Notes about GPLA usage
   - After installing, enable vamp_293 in the list of add-ons.  
   - You should see the VAMP Settings panel now, under the Render properties tab.  
 
- * There is also an older version of this add-on which works with Blender 2.79. Download vamp_279.zip and install using instructions above.
+ * There is also an older version of this add-on which works with Blender 2.79. Download vamp_279.zip and install using instructions above.  There is also a tutorial video for this version, here: https://youtu.be/9H-l_qkF8OI
   
 ### META
 
