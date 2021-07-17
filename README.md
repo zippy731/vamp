@@ -36,7 +36,10 @@ https://youtu.be/Rgv6X14iTGQ
 Part 3 - VAMP Trace mode 
 https://youtu.be/lnhQnsjQx6o
 
+### Support / Q&A
+If you have questions about VAMP usage, please ask them in one of the oscilloscope music forums ([subreddit](https://www.reddit.com/r/oscilloscopemusic/) or [oscistudio users forum](https://forum.oscilloscopemusic.com/)) or on one of the [tutorial videos on my youtube channel](http://bit.ly/2VtNBsJ).  I will try to get back to you timely, but no promises.  
 
+VAMP is free software, with no warranty or guarantees, so please don't use in mission-critical settings until YOU know thoroughly how it works in your situation.
 
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  \_flat meshes are the same meshes, but with vertices remapped onto the flat XY plane, for a top-down view.  The \_flat meshes are intended for use with OsciStudio
@@ -153,7 +156,7 @@ Notes about GPLA usage
 
 
 ### Installing VAMP
-- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+ and 2.93.  It has been tested and is stable for use with Blender 2.83 LTS and 2.93 LTS.  
+- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+ and 2.93.  It has been tested and is stable for use with Blender 2.83 LTS, 2.93 LTS, and 3.0 alpha.
 - To install, 
   - Download the contents of this repository to your desktop.  It is the master file, and contains the installer, an older version, and this version.
   - From the master zip, extract vamp_293.zip and save to your desktop.  Leave it as a zip file.  
