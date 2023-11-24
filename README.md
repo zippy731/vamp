@@ -120,6 +120,9 @@ Recommended workflow is:
 - Connect to Oscistudio, confirm that mesh is visible. Oscistudio default un-rotated view should display \_flat meshes cleanly.
 - Send Animation to Oscistudio
 
+## Using with osci-render
+[osci-render](https://github.com/jameshball/osci-render) is an open source alternative to Oscistudio.  Because osci-render relies on Grease Pencil Line Art as it's edge source, most of VAMP's core functionality is redundant. However, you can still use the trace function and pass it into osci-render via a GPLA object as described below.
+
 ## Using with Grease Pencil Line Art (Blender 2.93 onward)
 Beginning with the Blender 2.93 release, Grease Pencil (GP) now has the ability to create intricate line drawings from existing geometry, using the [Grease Pencil Line Art (GPLA) modifier](https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html).  The GPLA modifier creates drawings from edges, accounting for marked feature lines, creases, and contours, and calculating occlusion correctly.  This new Blender feature is quite similar to the original core function of VAMP, and is much faster as it is a native Blender feature.  
 
@@ -153,10 +156,12 @@ Notes about GPLA usage
    3. The Vamp collection name is entered into the VAMP settings panel
    4. The Edge Limit is set higher than the number of vertices in your meshes.
    5. Cull and Raycast limits are sufficiently large for your model.
+   6. If all of the above do not solve the problem, click the 'Reload Script' button and try again.
+ 
 
 
 ### Installing VAMP
-- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+ and 2.93.  It has been tested and is stable for use with Blender 2.83 LTS, 2.93 LTS, and 3.0 alpha.
+- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+ and 2.93.  It has been tested and is stable for use with Blender 2.83 LTS, 2.93 LTS, and 3.0, 3.65, and 4.01.
 - To install, 
   - Download the contents of this repository to your desktop.  It is the master file, and contains the installer, an older version, and this version.
   - From the master zip, extract vamp_293.zip and save to your desktop.  Leave it as a zip file.  
