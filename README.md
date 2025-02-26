@@ -123,7 +123,8 @@ Recommended workflow is:
 ## Using with osci-render
 [osci-render](https://github.com/jameshball/osci-render) is an open source alternative to Oscistudio.  Because osci-render relies on Grease Pencil Line Art as it's edge source, most of VAMP's core functionality is redundant. However, you can still use the trace function and pass it into osci-render via a GPLA object as described below.
 
-## Using with Grease Pencil Line Art (Blender 2.93 onward)
+## Using with Grease Pencil Line Art (Blender 2.93-4.1)
+### Changes were made in 4.2 and 4.3 that break Grease Pencil Line Art! Use 4.1 or older if you want to use GPLA!
 Beginning with the Blender 2.93 release, Grease Pencil (GP) now has the ability to create intricate line drawings from existing geometry, using the [Grease Pencil Line Art (GPLA) modifier](https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html).  The GPLA modifier creates drawings from edges, accounting for marked feature lines, creases, and contours, and calculating occlusion correctly.  This new Blender feature is quite similar to the original core function of VAMP, and is much faster as it is a native Blender feature.  
 
 VAMP can take these GPLA drawings as an input, and process and reformat them for output to OsciStudio.  Using VAMP with GPLA takes a bit of planning, but can yield some terrific results.
@@ -162,16 +163,16 @@ Notes about GPLA usage
 
 ### Installing VAMP
 - VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+ and 2.93.  It has been tested and is stable for use with Blender 2.83 LTS, 2.93 LTS, and 3.0, 3.65, and 4.01.
+  - The included zip is only compiled for Windows with Cython, but doing so for Linux or MacOS is as simple as running `python setup.py build_ext --inplace` on a Linux or MacOS machine with Cython and bpy installed.
+    - As of 2/26/2025, the only bpy-compatible Python version is 3.11.x, but this may change in the future. See the [bpy PyPi page](https://pypi.org/project/bpy/) for the latest information.
 - To install, 
   - Download the contents of this repository to your desktop.  It is the master file, and contains the installer, an older version, and this version.
-  - From the master zip, extract vamp_293.zip and save to your desktop.  Leave it as a zip file.  
+  - From the master zip, extract vamp_windows.zip and save to your desktop.  Leave it as a zip file.  
   - Within Blender, go to Edit\Preferences\Add-ons
    - (If you have any previous versions of VAMP, you should disable and remove them now)
-  - Within the Add-on menu, install new VAMP: Browse to the vamp_293.zip file and click Install.  
-  - After installing, enable vamp_293 in the list of add-ons.  
+  - Within the Add-on menu, install new VAMP: Browse to the vamp_windows.zip file and click Install.  
+  - After installing, enable vamp in the list of add-ons.  
   - You should see the VAMP Settings panel now, under the Render properties tab.  
-
- * There is also an older version of this add-on which works with Blender 2.79. Download vamp_279.zip and install using instructions above.  There is also a tutorial video for this version, here: https://youtu.be/9H-l_qkF8OI
   
 ### META
 
