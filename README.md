@@ -5,7 +5,7 @@ Similar to Blender Freestyle, VAMP analyzes meshes from the camera perspective, 
 VAMP was built for use with [OsciStudio](https://oscilloscopemusic.com/oscistudio.php) for making [Oscilloscope Music](https://www.youtube.com/c/ChrisAllenMusic), but may be useful otherwise!
 
 ### Inputs:
-- Blender mesh(es), curves, or Grease Pencil objects to be processed.
+- Blender mesh(es) or curves to be processed.  (Grease Pencil input is not working on Blender 4.x/5.x - see below.)
 - Blender camera
  
 ### Outputs:
@@ -14,19 +14,19 @@ VAMP was built for use with [OsciStudio](https://oscilloscopemusic.com/oscistudi
 ### How to Use:
 - Create blender file with objects and an active camera
 - Select target objects to be VAMP'ed, put into new collection
-  - target objects can be a mix of meshes, curves, and Grease Pencil Line Art (GPLA) objects
-  - If using GPLA objects, be sure to 'bake' the GP Line Art modifier before VAMPing 
+  - target objects can be a mix of meshes and curves
 - In VAMP control panel (under Render properties settings):
   - Update VAMP Target with name of new collection 
 
-  - Click **VAMP ONCE**.  Vamp will create six new objects, and place them into a new collection called _vampOutput:
+  - Click **VAMP ONCE**.  Vamp will create seven new objects, and place them into a new collection called _vampOutput:
     - _slicedFinal is all visible edges from original mesh collection
     - _silhouetteFinal is just the silhouette from original mesh collection
-    - _flatSliced and flatSilhouette are remapped versions of the above meshes, translated onto the flat XY plane
+    - _flatSliced and _flatSilhouette are remapped versions of the above meshes, translated onto the flat XY plane
+    - _flatSilhouetteCameraView is the silhouette flattened from the camera's perspective, with optional gap filling
     - _traceFinal and _traceFinalMesh are initially empty, and will be used by the trace function, described below.
   - **Turn On VAMP** will **VAMP ONCE** for every frame change in the timeline.
 
-### Tutorial Videos (updated for 2.93 version):
+### Tutorial Videos (recorded on the 2.93-era version; the workflow is unchanged):
 Part 1 - VAMP Setup and Usage
 https://youtu.be/OytuO1ImTd0
 
@@ -44,7 +44,7 @@ VAMP is free software, with no warranty or guarantees, so please don't use in mi
 ### How it works:
 VAMP takes input meshes, then subdivides edges into smaller subedges.  Using raycasting, it tests the visibility of subedge segments, and retains only those subedges which are visible to camera.  It then recombines those subedges into a simplified mesh.  \_flat meshes are the same meshes, but with vertices remapped onto the flat XY plane, for a top-down view.  The \_flat meshes are intended for use with OsciStudio
 
-**Note:** VAMP is meant for use with Blender 2.8x and 2.9x.  It has been tested extensively with Oscistudio 5.5.  Even so, it will sometimes crash Blender, so save your work.  There is an older version of VAMP which works with Blender 2.79, but that is no longer being developed and some features are not included. 
+**Note:** As of version 1.2.1, VAMP requires **Blender 4.x or 5.x**.  Support for Blender 2.8x and 2.9x has been dropped, and this version will not work on them.  If you need to stay on an older Blender, use VAMP 1.2.0, available from this repository's git history.  VAMP has been tested extensively with Oscistudio 5.5.  Even so, it will sometimes crash Blender, so save your work.
 
 ## VAMP Settings:
 **Turn On VAMP / VAMP ONCE -** VAMP ONCE will run VAMP just once, for the current setup.  Turn On VAMP is an on/off toggle, and will reprocess the scene once for every frame change, and is meant for use with animations.  Recommended to leave VAMP off, and adjust all of your settings using VAMP ONCE before turning on VAMP.  Note: If Turn On VAMP doesn't seem to be updating with each frame in an animation, click the "Reload Script" button and try again (see below.)
@@ -58,7 +58,7 @@ VAMP takes input meshes, then subdivides edges into smaller subedges.  Using ray
 
 **Freestyle -**  Normal mode will display ALL visible edges when calculating \_slicedFinal.  Freestyle mode will display only those edges which have been marked as Freestyle Edges or Sharp Edges in mesh edit.  Useful for simplifying results while maintaining some form.
 
-**Freestyle>Creases -** (2.8+ only) When Freestyle is selected, will also include all edges with interior angles up to the indicated angle.  Intended to behave like [Freestyle crease mode](https://docs.blender.org/manual/en/latest/render/freestyle/parameter_editor/line_style/modifiers/alpha/crease_angle.html) 
+**Freestyle>Creases -** When Freestyle is selected, will also include all edges with interior angles up to the indicated angle.  Intended to behave like [Freestyle crease mode](https://docs.blender.org/manual/en/latest/render/freestyle/parameter_editor/line_style/modifiers/alpha/crease_angle.html) 
 
 **Lim** - If using Freestyle crease mode, set the angle limit to flag creases.  The larger the number, the more edges will be displayed.  Selecting 180 is the same as including all edges on flat surfaces. 
 
@@ -72,7 +72,7 @@ VAMP takes input meshes, then subdivides edges into smaller subedges.  Using ray
 
 **Min length -** The minimum length for any subedge.  This avoids very small source edges being subdivided.
 
-**Cull -** (2.8+ only) Sets a maximum distance for *objects* to be included in VAMP output.  Very useful for large scenes.  When Cull is turned on, VAMP will only include objects which are within a set radius from the camera.
+**Cull -** Sets a maximum distance for *objects* to be included in VAMP output.  Very useful for large scenes.  When Cull is turned on, VAMP will only include objects which are within a set radius from the camera.
 
 **Cull>Distance -** Radius setting for Cull feature.
 
@@ -86,7 +86,13 @@ VAMP takes input meshes, then subdivides edges into smaller subedges.  Using ray
 
 **Denoise>Pct** The proportion of noise edges which will be removed. 1.0 is all of those edges, smaller proportions can make an interesting shading effect by retaining some short edges.
 
-## Trace Mode: (2.8+ only)
+**Fill Gaps -** Applies to \_flatSilhouetteCameraView.  Silhouette calculation can leave small breaks in what should be a continuous outline; when enabled, VAMP looks for loose endpoints and joins them back up.
+
+**Fill Gaps>Threshold -** How close two endpoints must be before they are treated as the two sides of the same gap.
+
+**Fill Gaps>Max Distance -** The largest gap VAMP will bridge.  Endpoints further apart than this are left unconnected.
+
+## Trace Mode:
 Trace mode will take the input mesh, generate a list of vertices, then output a curve which traces a path through the vertices.  Vertices can be generated several ways, and output curves can be Bezier or NURBS.  Trace also generates a mesh version of the resulting curve.
 
 Trace determines the sequence of vertices by traversing the mesh, iteratively selecting the nearest vertex to the previous vertex.  This is simplistic, and not necessarily the shortest path between all of the vertices, but it is quick and creates interesting curve paths for further use.  
@@ -99,16 +105,18 @@ Trace takes the same input information as VAMP, and will output one curve, \_tra
 
 **Trace Limit** Limit the total number of vertices used in Trace.  If the origin mesh has more vertices, Trace will still work, but it will only include vertices up to the limit.  
 
-**Trace Mode** Sets the source of vertices for Trace.  Faces (default) will use the centers of polygons in the mesh.  Edges will use centerpoints of all edges, and Verts will just use the input mesh vertices.  FlatSliced and FlatSilhouette will use those respective results of VAMP as the input to the trace algorithm.
+**Trace Mode** Sets the source of vertices for Trace.  Faces (default) will use the centers of polygons in the mesh.  Edges will use centerpoints of all edges, and Verts will just use the input mesh vertices.  FlatSliced, FlatSil and FSCV will use the corresponding VAMP results (\_flatSliced, \_flatSilhouette and \_flatSilhouetteCameraView) as the input to the trace algorithm.
 
-**Curve Type** Determines output curve type.  Bezier (default) seems to be more stable, but NURBS is also available.
+**Curve Type** Determines output curve type.  Bezier (default) seems to be more stable.  NURBS is smoother, Poly gives straight line segments, and NUPO converts a NURBS curve to a high-resolution poly line.
+
+**NUPO Subdivs** Only shown when Curve Type is NUPO.  Sets how many subdivisions are generated per curve segment when converting NURBS to poly.  Higher is smoother, at the cost of more vertices.
 
 ***Notes:*** 
 - despite requiring the same inputs as VAMP, Trace ignores camera information during analysis.  Trace will analyze and create a path through ALL vertices in the input mesh, whether or not they would be visible from the camera perspective.
 - Trace works best when the origin mesh has at least some complexity for it to analyze and work from.  Broad surfaces are better than intricate details.  Experiment with different levels of subdivision in the input meshes.  
 - Trace calculates the 'shortest path' sequence of vertices each time it runs.  This means that if an input mesh is animated, Trace may calculate a different vertex sequence, so the resulting trace may snap visually around during animation.  This is expected. 
 
-## Reload Script (2.8+ only)
+## Reload Script
 Occasionally, VAMP will stop working properly.  This is most noticeable when using in conjunction with other add-ons, such as Oscistudio or Animation Nodes.  Reload Script will reload VAMP from disk, and also re-register the application handlers.
 
 ## Using with Oscistudio
@@ -123,7 +131,10 @@ Recommended workflow is:
 ## Using with osci-render
 [osci-render](https://github.com/jameshball/osci-render) is an open source alternative to Oscistudio.  Because osci-render relies on Grease Pencil Line Art as it's edge source, most of VAMP's core functionality is redundant. However, you can still use the trace function and pass it into osci-render via a GPLA object as described below.
 
-## Using with Grease Pencil Line Art (Blender 2.93 onward)
+## Using with Grease Pencil Line Art
+
+> **Not currently working on Blender 4.x / 5.x.**  Blender 4.3 introduced Grease Pencil v3, which renamed the object type from `GPENCIL` to `GREASEPENCIL` and reworked the stroke data API.  VAMP still looks for the old type, so Grease Pencil objects are rejected before processing.  Mesh and curve inputs are unaffected.  The section below describes the intended workflow and is retained for reference, and for anyone running VAMP 1.2.0 on Blender 2.93-4.2.
+
 Beginning with the Blender 2.93 release, Grease Pencil (GP) now has the ability to create intricate line drawings from existing geometry, using the [Grease Pencil Line Art (GPLA) modifier](https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html).  The GPLA modifier creates drawings from edges, accounting for marked feature lines, creases, and contours, and calculating occlusion correctly.  This new Blender feature is quite similar to the original core function of VAMP, and is much faster as it is a native Blender feature.  
 
 VAMP can take these GPLA drawings as an input, and process and reformat them for output to OsciStudio.  Using VAMP with GPLA takes a bit of planning, but can yield some terrific results.
@@ -161,17 +172,18 @@ Notes about GPLA usage
 
 
 ### Installing VAMP
-- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html), written for use with Blender 2.8+ and 2.93.  It has been tested and is stable for use with Blender 2.83 LTS, 2.93 LTS, and 3.0, 3.65, and 4.01.
+- VAMP is a [Blender add-on](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html) for **Blender 4.x and 5.x**.  Version 1.2.1 has been tested on Blender 4.5.4 LTS and 5.2.0 LTS.
+> **Upgrading from 1.2.0 or earlier?**  This add-on used to be called `vamp_293`, and is now just `vamp`.  Blender treats the new name as a **separate add-on**, so it will not replace your old install.  You must disable and remove `vamp_293` first - if both are enabled, both will process every frame change.
+
 - To install, 
-  - Download the contents of this repository to your desktop.  It is the master file, and contains the installer, an older version, and this version.
-  - From the master zip, extract vamp_293.zip and save to your desktop.  Leave it as a zip file.  
+  - Download `vamp.zip` from this repository and save it to your desktop.  Leave it as a zip file.  
   - Within Blender, go to Edit\Preferences\Add-ons
-   - (If you have any previous versions of VAMP, you should disable and remove them now)
-  - Within the Add-on menu, install new VAMP: Browse to the vamp_293.zip file and click Install.  
-  - After installing, enable vamp_293 in the list of add-ons.  
+   - If you have any previous version of VAMP installed (listed as `vamp_293`), disable and remove it now.
+  - Within the Add-on menu, install new VAMP: Browse to the vamp.zip file and click Install.  
+  - After installing, enable VAMP in the list of add-ons.  
   - You should see the VAMP Settings panel now, under the Render properties tab.  
 
- * There is also an older version of this add-on which works with Blender 2.79. Download vamp_279.zip and install using instructions above.  There is also a tutorial video for this version, here: https://youtu.be/9H-l_qkF8OI
+ * Older releases (including the Blender 2.79 version, `vamp_279.zip`, and the 2.8x/2.9x-compatible VAMP 1.2.0) are no longer distributed here, but remain available in this repository's git history.  The 2.79 tutorial video is still up, here: https://youtu.be/9H-l_qkF8OI
   
 ### META
 

@@ -1,8 +1,8 @@
 bl_info = {
-    "name": "vamp_293",
+    "name": "VAMP",
     "author": "Chris Allen", 
-    "version": (1, 2, 0),
-    "blender": (2, 80, 0),
+    "version": (1, 2, 1),
+    "blender": (4, 0, 0),
     "location": "View3D",
     "description": "VAMP: Vector Art Motion Processor. Removes back faces.",
     "warning": "Requires one object collection and one camera",
@@ -10,10 +10,24 @@ bl_info = {
     "category": "Development",
 }
 
+# addon module name is "vamp" as of 1.2.1 (was "vamp_293" through 1.2.0)
+
+# 1.2.1:
+# - Renamed from "vamp_293" to "vamp". The 2.93 in the old name referred to the Blender
+#   version it targeted, which is now misleading. Blender treats this as a NEW add-on:
+#   disable and remove any existing vamp_293 before installing, or both will run at once.
+# - Blender 4.x / 5.x ONLY. Support for 2.8x and 2.9x is dropped as of this release.
+# - Blender 5.x compatibility: freestyle edge marks are now read from the
+#   'freestyle_edge' mesh attribute. Blender 5.0 removed MeshEdge.use_freestyle_mark,
+#   which broke Freestyle mode. Falls back to the old property on 4.x.
+# - KNOWN ISSUE: Grease Pencil input does not work on 4.x/5.x. Blender 4.3 introduced
+#   Grease Pencil v3 and renamed the object type from 'GPENCIL' to 'GREASEPENCIL', so
+#   GP objects are rejected by item_check(). Mesh and curve input are unaffected.
+
 # new 2.93 version:
 # - can now use Grease Pencil Line Art as input. Some error checking to ensure GP is baked.
 # - output is contained into _vampOutput collection
-# this version still compatible w/ 2.8x, but GP Line Art feature only available from 2.93 onward. 
+# (historical note: the 2.93 release ran on 2.8x. That is no longer true - see 1.2.1 above.)
 
 # GOOD TUT: https://blender.stackexchange.com/questions/57306/how-to-create-a-custom-ui
 
@@ -168,7 +182,8 @@ class VampProperties(PropertyGroup):
         ("Edges","Edges","Trace Edge Centers",1),
         ("Faces","Faces","Trace Face Centers",2),
         ("FlatSil","FlatSil","Trace Flat Silhouette",3),
-        ("FlatSliced","FlatSliced","Trace Flat Sliced",4)
+        ("FlatSliced","FlatSliced","Trace Flat Sliced",4),
+        ("FSCV","FSCV","Trace Flat Silhouette Camera View",5)
         
     ]          
     vamp_trace_enum: EnumProperty(
@@ -178,19 +193,268 @@ class VampProperties(PropertyGroup):
     ) 
     vamp_trace_curve_options = [
         ("NURBS","NURBS","Smoother NURBS",1),
-        ("Bezier","Bezier","Faster Bezier",0)
+        ("Bezier","Bezier","Faster Bezier",0),
+        ("Poly","Poly","Poly Line Segments",2),
+        ("NUPO","NUPO","NURBS to High-Res Poly",3)
     ]          
     vamp_trace_curve_enum: EnumProperty(
         items = vamp_trace_curve_options,
         name = "Curve Type",
         default = "Bezier"
     ) 
+    vamp_nupo_subdivs: IntProperty(
+        name = "NUPO Subdivs",
+        soft_min = 1,
+        soft_max = 20,
+        min = 1,
+        max = 20,
+        description = "Subdivisions per curve segment for NURBS to Poly conversion",
+        default = 3
+    ) 
+    
+    # new silhouette gap filling options
+    vamp_fill_gaps: BoolProperty(
+        name = "Fill Gaps",
+        default = True,
+        description = "Fill gaps in silhouette edges"
+    )
+    vamp_gap_threshold: FloatProperty(
+        name = "Gap Threshold",
+        default = 0.1,
+        soft_min = 0.01,
+        soft_max = 1.0,
+        precision = 3,
+        description = "Distance to group endpoints as part of same gap"
+    )
+    vamp_max_gap_distance: FloatProperty(
+        name = "Max Gap Distance",
+        default = 0.5,
+        soft_min = 0.1,
+        soft_max = 2.0,
+        precision = 3,
+        description = "Maximum distance to connect endpoints across gaps"
+    )
+    vamp_connection_threshold: FloatProperty(
+        name = "Connection Threshold",
+        default = 0.05,
+        soft_min = 0.01,
+        soft_max = 0.5,
+        precision = 3,
+        description = "Distance to directly connect nearby endpoints"
+    )
     
 # fixed parameters
 vamp_on = False #switched off at beginning
 trace_on = False # trace defaults to off
 collapse_angle = 1.5 # radians, for dissolve function.
 recent_frame = -1 # initialize recent frame
+
+def fill_silhouette_gaps_systematic(bm_sil, max_gap_distance=0.5):
+    """
+    Systematically fill gaps to create a single watertight silhouette.
+    Finds line segments and connects them to nearest unconnected endpoints,
+    building a continuous path and removing used endpoints from the pool.
+    """
+    if len(bm_sil.edges) == 0:
+        return bm_sil
+    
+    # Find all endpoints (vertices with only one connected edge)
+    endpoints = []
+    for vert in bm_sil.verts:
+        if len(vert.link_edges) == 1:
+            endpoints.append(vert)
+    
+    if len(endpoints) < 2:
+        return bm_sil  # No gaps to fill
+    
+    # Create a set of available endpoints (will be removed as they're used)
+    available_endpoints = set(endpoints)
+    new_edges = []
+    
+    # Start with the first available endpoint
+    current_endpoint = list(available_endpoints)[0]
+    available_endpoints.remove(current_endpoint)
+    
+    while len(available_endpoints) > 0:
+        # Find the nearest available endpoint
+        nearest_endpoint = None
+        nearest_distance = max_gap_distance
+        
+        for endpoint in available_endpoints:
+            dist = distance(current_endpoint.co, endpoint.co)
+            if dist < nearest_distance:
+                nearest_distance = dist
+                nearest_endpoint = endpoint
+        
+        if nearest_endpoint is None:
+            # No more endpoints within range, try to find another starting point
+            if len(available_endpoints) > 0:
+                current_endpoint = list(available_endpoints)[0]
+                available_endpoints.remove(current_endpoint)
+                continue
+            else:
+                break
+        
+        # Connect the current endpoint to the nearest one
+        new_edge = bm_sil.edges.new([current_endpoint, nearest_endpoint])
+        new_edges.append(new_edge)
+        
+        # Remove the connected endpoint from available pool
+        available_endpoints.remove(nearest_endpoint)
+        
+        # Continue from the other end of the newly connected line segment
+        # Find the other endpoint of the line segment that contains nearest_endpoint
+        current_endpoint = None
+        for edge in nearest_endpoint.link_edges:
+            other_vert = edge.other_vert(nearest_endpoint)
+            if other_vert in available_endpoints:
+                current_endpoint = other_vert
+                available_endpoints.remove(current_endpoint)
+                break
+        
+        # If we can't continue from the other end, pick a new starting point
+        if current_endpoint is None and len(available_endpoints) > 0:
+            current_endpoint = list(available_endpoints)[0]
+            available_endpoints.remove(current_endpoint)
+    
+    # Update the bmesh
+    bm_sil.verts.ensure_lookup_table()
+    bm_sil.edges.ensure_lookup_table()
+    
+    return bm_sil
+
+def fill_silhouette_gaps(bm_sil, gap_threshold=0.1, max_gap_distance=0.5):
+    """
+    Post-process silhouette to fill gaps by connecting nearby endpoints.
+    
+    Args:
+        bm_sil: The silhouette bmesh to process
+        gap_threshold: Maximum distance to consider endpoints as part of same gap
+        max_gap_distance: Maximum distance to connect endpoints across gaps
+    
+    Returns:
+        Modified bmesh with gaps filled
+    """
+    if len(bm_sil.edges) == 0:
+        return bm_sil
+    
+    # Find all endpoints (vertices with only one connected edge)
+    endpoints = []
+    for vert in bm_sil.verts:
+        if len(vert.link_edges) == 1:
+            endpoints.append(vert)
+    
+    if len(endpoints) < 2:
+        return bm_sil  # No gaps to fill
+    
+    # Group nearby endpoints that might be part of the same gap
+    gap_groups = []
+    used_endpoints = set()
+    
+    for i, ep1 in enumerate(endpoints):
+        if ep1 in used_endpoints:
+            continue
+            
+        current_group = [ep1]
+        used_endpoints.add(ep1)
+        
+        # Find other endpoints that are close to this one
+        for j, ep2 in enumerate(endpoints):
+            if ep2 in used_endpoints:
+                continue
+                
+            if distance(ep1.co, ep2.co) <= gap_threshold:
+                current_group.append(ep2)
+                used_endpoints.add(ep2)
+        
+        if len(current_group) >= 2:
+            gap_groups.append(current_group)
+    
+    # For each gap group, try to connect endpoints to nearby silhouette edges
+    new_edges = []
+    
+    for gap_group in gap_groups:
+        for endpoint in gap_group:
+            # Find the closest silhouette edge that's not connected to this endpoint
+            closest_edge = None
+            closest_distance = max_gap_distance
+            closest_point = None
+            
+            for edge in bm_sil.edges:
+                # Skip edges already connected to this endpoint
+                if endpoint in edge.verts:
+                    continue
+                
+                # Calculate distance from endpoint to edge
+                edge_vec = edge.verts[1].co - edge.verts[0].co
+                edge_length = edge_vec.length
+                
+                if edge_length == 0:
+                    continue
+                    
+                # Project endpoint onto edge line
+                t = ((endpoint.co - edge.verts[0].co).dot(edge_vec)) / (edge_length * edge_length)
+                t = max(0, min(1, t))  # Clamp to edge bounds
+                
+                closest_point_on_edge = edge.verts[0].co + t * edge_vec
+                dist = distance(endpoint.co, closest_point_on_edge)
+                
+                if dist < closest_distance:
+                    closest_distance = dist
+                    closest_edge = edge
+                    closest_point = closest_point_on_edge
+            
+            # If we found a close edge, create a new edge to connect them
+            if closest_edge is not None:
+                # Create new vertex at the closest point on the edge
+                new_vert = bm_sil.verts.new(closest_point)
+                
+                # Create new edge from endpoint to the new vertex
+                new_edge = bm_sil.edges.new([endpoint, new_vert])
+                new_edges.append(new_edge)
+                
+                # Subdivide the original edge at the closest point
+                bmesh.ops.subdivide_edges(bm_sil, edges=[closest_edge], cuts=1)
+    
+    # Update the bmesh
+    bm_sil.verts.ensure_lookup_table()
+    bm_sil.edges.ensure_lookup_table()
+    
+    return bm_sil
+
+def clean_silhouette_connectivity(bm_sil, connection_threshold=0.05):
+    """
+    Additional cleanup to ensure silhouette edges form continuous paths.
+    Connects nearby endpoints that might have been missed by the gap filling.
+    """
+    if len(bm_sil.edges) == 0:
+        return bm_sil
+    
+    # Find endpoints again after gap filling
+    endpoints = []
+    for vert in bm_sil.verts:
+        if len(vert.link_edges) == 1:
+            endpoints.append(vert)
+    
+    # Connect very close endpoints directly
+    new_edges = []
+    connected_pairs = set()
+    
+    for i, ep1 in enumerate(endpoints):
+        for j, ep2 in enumerate(endpoints[i+1:], i+1):
+            if (ep1, ep2) in connected_pairs or (ep2, ep1) in connected_pairs:
+                continue
+                
+            if distance(ep1.co, ep2.co) <= connection_threshold:
+                new_edge = bm_sil.edges.new([ep1, ep2])
+                new_edges.append(new_edge)
+                connected_pairs.add((ep1, ep2))
+    
+    bm_sil.verts.ensure_lookup_table()
+    bm_sil.edges.ensure_lookup_table()
+    
+    return bm_sil
+
 bpy
 def item_check():
     global cam
@@ -253,6 +517,8 @@ def clean_up_first():
         newobj = bpy.data.objects.new(name='_flatSliced',object_data = empty_mesh.copy())
     if bpy.data.objects.get('_flatSilhouette') is None:
         newobj = bpy.data.objects.new(name='_flatSilhouette',object_data = empty_mesh.copy())
+    if bpy.data.objects.get('_flatSilhouetteCameraView') is None:
+        newobj = bpy.data.objects.new(name='_flatSilhouetteCameraView',object_data = empty_mesh.copy())
     if bpy.data.objects.get('_traceFinalMesh') is None:
         newobj = bpy.data.objects.new(name='_traceFinalMesh',object_data = empty_mesh.copy())
     if bpy.data.objects.get('_traceFinal') is None:
@@ -261,7 +527,7 @@ def clean_up_first():
     bpy.data.meshes.remove(empty_mesh, do_unlink=True)
     bpy.data.curves.remove(empty_curve, do_unlink=True)   
     # link all output objects into vamp output collection
-    obj_list = ('_slicedFinal','_silhouetteFinal','_flatSliced','_flatSilhouette','_traceFinalMesh','_traceFinal')    
+    obj_list = ('_slicedFinal','_silhouetteFinal','_flatSliced','_flatSilhouette','_flatSilhouetteCameraView','_traceFinalMesh','_traceFinal')    
     for obj_name in obj_list:
         obj = bpy.data.objects.get(obj_name)
         try:
@@ -400,6 +666,20 @@ def get_all_the_stuff():
     # we will also use it later for BVHTree hit testing     
     return {'FINISHED'}
 
+def get_freestyle_edge_indices(mesh):
+    """Return the set of edge indices marked for Freestyle.
+
+    Blender 5.0 removed MeshEdge.use_freestyle_mark in favour of a generic
+    boolean 'freestyle_edge' attribute on the edge domain. The attribute only
+    exists once something has been marked, so a missing one means no marks.
+    """
+    attr = mesh.attributes.get('freestyle_edge')
+    if attr is not None and attr.domain == 'EDGE' and attr.data_type == 'BOOLEAN':
+        return {i for i, d in enumerate(attr.data) if d.value}
+    if mesh.edges and hasattr(mesh.edges[0], 'use_freestyle_mark'):
+        return {e.index for e in mesh.edges if e.use_freestyle_mark}
+    return set()
+
 def get_marked_edges():
     #creates bm_marked
     #iterate thru all objects in group, find marked edges, 
@@ -415,8 +695,10 @@ def get_marked_edges():
         data_copy=get_eval_mesh(obj)
         counter = 0
         marked_list = []
+        # 5.0+: freestyle marks live in a mesh attribute, not on MeshEdge
+        freestyle_indices = get_freestyle_edge_indices(data_copy)
         for e in data_copy.edges:
-            if (e.use_freestyle_mark is True or e.use_edge_sharp is True):
+            if (counter in freestyle_indices or e.use_edge_sharp is True):
                 marked_list.append(counter)
             counter += 1             
         
@@ -664,44 +946,47 @@ def get_slicestuff(bm_test, bm_mask):
     
     # now we've got final vertex pairs for edges, need to make a mesh of it.
 
-    #first, make a set of unique vertices
-    final_verts=[]
-    for pairs in the_edges:
-        vert1=pairs[0]
-        if vert1 not in final_verts: 
-            final_verts.append(vert1)
-        vert2=pairs[1]
-        if vert2 not in final_verts: 
-            final_verts.append(vert2)
+    # Optimized vertex deduplication using dict for O(1) lookups instead of O(n)
+    # Build unique vertices list and mapping dict in one pass
+    vert_to_index = {}  # Maps vertex coordinates to index
+    final_verts = []
     
-    #now iterate thru edge pairs the_edges, find vert indices from above
-    final_edges=[]
+    for pairs in the_edges:
+        for vert in pairs:
+            # Convert Vector to tuple for hashing (Vector objects can't be dict keys)
+            vert_key = (vert.x, vert.y, vert.z)
+            if vert_key not in vert_to_index:
+                vert_to_index[vert_key] = len(final_verts)
+                final_verts.append(vert)
+    
+    # Build final edges using the mapping dict for O(1) index lookups
+    final_edges = []
     for pairs in the_edges:        
-        vert0=pairs[0]
-        vert_start=final_verts.index(vert0)
-        vert1=pairs[1]
-        vert_end=final_verts.index(vert1)       
-        new_pair=[vert_start,vert_end]
-        final_edges.append(new_pair)
+        vert0_key = (pairs[0].x, pairs[0].y, pairs[0].z)
+        vert1_key = (pairs[1].x, pairs[1].y, pairs[1].z)
+        vert_start = vert_to_index[vert0_key]
+        vert_end = vert_to_index[vert1_key]
+        final_edges.append([vert_start, vert_end])
         
-    #repeating steps for silhouette: unique verts
-    final_sil_verts=[]
+    # Optimized silhouette vertex deduplication
+    sil_vert_to_index = {}
+    final_sil_verts = []
+    
     for pairs in the_sil_edges:
-        vert1=pairs[0]
-        if vert1 not in final_sil_verts: 
-            final_sil_verts.append(vert1)
-        vert2=pairs[1]
-        if vert2 not in final_sil_verts: 
-            final_sil_verts.append(vert2)
+        for vert in pairs:
+            vert_key = (vert.x, vert.y, vert.z)
+            if vert_key not in sil_vert_to_index:
+                sil_vert_to_index[vert_key] = len(final_sil_verts)
+                final_sil_verts.append(vert)
         
-    final_sil_edges=[] #silhouette
+    # Build silhouette edges using mapping dict
+    final_sil_edges = []
     for pairs in the_sil_edges:        
-        vert0=pairs[0]
-        vert_start=final_sil_verts.index(vert0)
-        vert1=pairs[1]
-        vert_end=final_sil_verts.index(vert1)       
-        new_pair=[vert_start,vert_end]
-        final_sil_edges.append(new_pair)    
+        vert0_key = (pairs[0].x, pairs[0].y, pairs[0].z)
+        vert1_key = (pairs[1].x, pairs[1].y, pairs[1].z)
+        vert_start = sil_vert_to_index[vert0_key]
+        vert_end = sil_vert_to_index[vert1_key]
+        final_sil_edges.append([vert_start, vert_end])    
 
     final_faces=[] #empty list, for completeness
     
@@ -748,17 +1033,131 @@ def make_flattened(bm_output,flattened_name):
     flat_sliced = bpy.data.objects[flattened_name]
     mat_world = flat_sliced.matrix_world
     
-    # use bm_output, remap vertices
+    # create a copy of the bmesh to avoid modifying the original
+    bm_copy = bm_output.copy()
+    
+    # use bm_copy, remap vertices
     FlatVerts = []    
-    for v in bm_output.verts:
+    for v in bm_copy.verts:
         co_ndc = world_to_camera_view(scene, cam, v.co)        
         v.co.x = co_ndc[0] * cam_x_scale * vamp_scale
         v.co.y = co_ndc[1] * cam_y_scale * vamp_scale
         v.co.z = 0
-    bm_output.to_mesh(flat_sliced.data)
+    bm_copy.to_mesh(flat_sliced.data)
     flat_sliced.location = flat_loc 
     layer = bpy.context.view_layer
-    layer.update()  
+    layer.update()
+    
+    # clean up the copy
+    bm_copy.free()
+    return {'FINISHED'}
+
+def make_flattened_from_object(source_obj_name, flattened_name):
+    #remap to flat plane for oscistudio to see, using existing object as source
+    global cam
+    global vamp_scale
+    
+    res_y = bpy.context.scene.render.resolution_y
+    res_x = bpy.context.scene.render.resolution_x
+    cam_x_scale = res_x/500
+    cam_y_scale = res_y/500
+    
+    vamp_scale = bpy.context.scene.vamp_params.vamp_scale
+    # determine location based on xy cam scale
+    flat_loc = Vector ((-0.5 * cam_x_scale * vamp_scale,-0.5 * cam_y_scale * vamp_scale,0))
+    
+    # Get the source object
+    source_obj = bpy.data.objects.get(source_obj_name)
+    if not source_obj:
+        print(f"Source object {source_obj_name} not found")
+        return {'CANCELLED'}
+    
+    # Create bmesh from source object
+    bm_source = bmesh.new()
+    bm_source.from_mesh(source_obj.data)
+    
+    # create a copy of the bmesh to avoid modifying the original
+    bm_copy = bm_source.copy()
+    
+    # use bm_copy, remap vertices
+    FlatVerts = []    
+    for v in bm_copy.verts:
+        co_ndc = world_to_camera_view(scene, cam, v.co)        
+        v.co.x = co_ndc[0] * cam_x_scale * vamp_scale
+        v.co.y = co_ndc[1] * cam_y_scale * vamp_scale
+        v.co.z = 0
+    
+    # Apply to target object
+    flat_sliced = bpy.data.objects[flattened_name]
+    bm_copy.to_mesh(flat_sliced.data)
+    flat_sliced.location = flat_loc 
+    layer = bpy.context.view_layer
+    layer.update()
+    
+    # clean up the bmeshes
+    bm_copy.free()
+    bm_source.free()
+    return {'FINISHED'}
+
+def make_camera_view_flattened(bm_output, flattened_name):
+    #remap to flat plane viewed from camera perspective
+    global cam
+    
+    flat_camera_view = bpy.data.objects[flattened_name]
+    
+    # create a copy of the bmesh to avoid modifying the original
+    bm_copy = bm_output.copy()
+    
+    # Get camera location and orientation
+    cam_loc = cam.matrix_world.to_translation()
+    cam_forward = cam.matrix_world.to_quaternion() @ Vector((0, 0, -1))
+    
+    # Define camera view plane (perpendicular to camera forward direction)
+    # Place it at a fixed distance in front of camera
+    plane_distance = 5.0  # Distance from camera to projection plane
+    plane_origin = cam_loc + cam_forward * plane_distance
+    
+    # Project vertices from camera location onto the camera view plane
+    for v in bm_copy.verts:
+        # Vector from camera to vertex
+        to_vertex = v.co - cam_loc
+        
+        # Project this vector onto the camera view plane
+        # Using perspective projection: extend the ray from camera through vertex
+        # until it intersects the plane
+        ray_direction = to_vertex.normalized()
+        
+        # Calculate intersection with plane
+        # Plane equation: (point - plane_origin) · cam_forward = 0
+        # Ray equation: point = cam_loc + t * ray_direction
+        # Solve for t where ray intersects plane
+        denominator = ray_direction.dot(cam_forward)
+        if abs(denominator) > 0.0001:  # Avoid division by zero
+            t = (plane_origin - cam_loc).dot(cam_forward) / denominator
+            projected_point = cam_loc + t * ray_direction
+            v.co = projected_point
+        # If denominator is too small, keep original position
+    
+    # Apply gap filling to the camera view silhouette if enabled
+    if bpy.context.scene.vamp_params.vamp_fill_gaps:
+        max_gap_distance = bpy.context.scene.vamp_params.vamp_max_gap_distance
+        
+        bm_copy = fill_silhouette_gaps_systematic(bm_copy, max_gap_distance)
+    
+    bm_copy.to_mesh(flat_camera_view.data)
+    
+    # Position at the silhouette location so it appears in the same place
+    silhouette_obj = bpy.data.objects.get('_silhouetteFinal')
+    if silhouette_obj:
+        flat_camera_view.location = silhouette_obj.location
+    else:
+        flat_camera_view.location = (0, 0, 0)
+    
+    layer = bpy.context.view_layer
+    layer.update()
+    
+    # clean up the copy
+    bm_copy.free()
     return {'FINISHED'}
 
 def main_routine(): 
@@ -828,7 +1227,7 @@ def main_routine():
 
         if bpy.context.scene.vamp_params.vamp_denoise_pass:
             denoise(fixed_bm_slice)  
-            denoise(fixed_bm_sil)              
+            denoise(fixed_bm_sil)
         
         #output to 3d objects:
         make_obj(fixed_bm_slice,'_slicedFinal')
@@ -836,7 +1235,12 @@ def main_routine():
         
         # now remap to flat        
         make_flattened(fixed_bm_slice,'_flatSliced')        
-        make_flattened(fixed_bm_sil,'_flatSilhouette')              
+        
+        # create camera view flattened silhouette (with gap filling applied to denoised version)
+        make_camera_view_flattened(fixed_bm_sil,'_flatSilhouetteCameraView')
+        
+        # create flat silhouette from the processed FSCV object (includes denoise and gap filling)
+        make_flattened_from_object('_flatSilhouetteCameraView','_flatSilhouette')              
         
         # Update view layer (added 2.8)
         layer = bpy.context.view_layer
@@ -863,7 +1267,7 @@ def main_routine():
     print('====DONE====')
     return {'FINISHED'}
 
-def makeSpline(cu, typ, points):
+def makeSpline(cu, typ, points, use_cyclic=False):
     #tweaked, from     https://blenderartists.org/t/how-do-i-create-a-simple-curve-in-python/477260/4   
     spline = cu.splines.new(typ)
     npoints = len(points)    
@@ -888,6 +1292,10 @@ def makeSpline(cu, typ, points):
             spline.points[n].co=(pt[0],pt[1],pt[2],.01)
             #spline.points[n].co = pt 
             #spline.points[n].weight = 1
+    
+    # Set curve closure for continuous loops
+    if use_cyclic:
+        spline.use_cyclic_u = True
                 
     return    
 
@@ -956,7 +1364,61 @@ def main_trace_routine():
             endVecs = [Vector(edge3.verts[1].co) for edge3 in bm_sliced_trace.edges]
             midVecs = [Vector((edge3.verts[0].co+edge3.verts[1].co)/2) for edge3 in bm_sliced_trace.edges] 
             rawInputVecs.extend(endVecs)
-            rawInputVecs.extend(midVecs)                      
+            rawInputVecs.extend(midVecs)
+    ### FSCV mode: Use edge-walking on _flatSilhouetteCameraView for proper curve sequence
+    elif trace_mode == 'FSCV':
+        if bpy.data.objects.get('_flatSilhouetteCameraView') is None:
+            rawInputVecs = [vert.co for vert in bm_all_trace.verts]
+        else:
+            fscv_obj = bpy.data.objects.get('_flatSilhouetteCameraView')
+            bm_fscv = bmesh.new()
+            data_copy = get_eval_mesh(fscv_obj)
+            bm_fscv.from_mesh(data_copy)
+            
+            # Ensure lookup tables are updated after from_mesh()
+            bm_fscv.verts.ensure_lookup_table()
+            bm_fscv.edges.ensure_lookup_table()
+            
+            # Edge-walking algorithm to get vertices in proper sequence
+            rawInputVecs = []
+            visited_edges = set()
+            
+            # Find all endpoints (vertices with only 1 connected edge)
+            endpoints = [v for v in bm_fscv.verts if len(v.link_edges) == 1]
+            
+            # If no endpoints, start with any vertex (closed loops)
+            if not endpoints and bm_fscv.verts:
+                endpoints = [bm_fscv.verts[0]]
+            
+            # Process each connected component
+            for start_vertex in endpoints:
+                if any(edge in visited_edges for edge in start_vertex.link_edges):
+                    continue  # This component already processed
+                    
+                # Walk along edges from this starting point
+                current_vertex = start_vertex
+                component_vecs = [Vector(current_vertex.co)]
+                
+                while True:
+                    # Find unvisited edge from current vertex
+                    next_edge = None
+                    for edge in current_vertex.link_edges:
+                        if edge not in visited_edges:
+                            next_edge = edge
+                            break
+                    
+                    if next_edge is None:
+                        break  # No more unvisited edges
+                    
+                    visited_edges.add(next_edge)
+                    current_vertex = next_edge.other_vert(current_vertex)
+                    component_vecs.append(Vector(current_vertex.co))
+                
+                # Add this component's vertices to the trace
+                rawInputVecs.extend(component_vecs)
+            
+            bm_fscv.free()
+                      
 ### flatSil mode: will take Silhouette as input, subdivide edges again to provide vertices to trace, then trace edges sequentially        
     else: #it's flatSil mode. Just use results of flat silhouette.
         if bpy.data.objects.get('_flatSilhouette') is None:
@@ -986,31 +1448,40 @@ def main_trace_routine():
         #nothing in range. just quit.
         print('no faces in origin obj. quitting.')
         return 
-    for vec in rawInputVecs:
-        if vec not in inputVecs:
-            inputVecs.append(vec)
-        #append only unique values
-    startVec = inputVecs[0]
-    inputVecs.remove(startVec)
-    outputVecs.append(startVec)
+    
+    # FSCV mode uses edge-walking, so skip KDTree pathfinding
+    if trace_mode == 'FSCV':
+        outputVecs = rawInputVecs
+        use_cyclic_curves = True  # FSCV should create closed curves
+    else:
+        # Original KDTree pathfinding for other modes
+        inputVecs = []
+        outputVecs = []
+        for vec in rawInputVecs:
+            if vec not in inputVecs:
+                inputVecs.append(vec)
+            #append only unique values
+        startVec = inputVecs[0]
+        inputVecs.remove(startVec)
+        outputVecs.append(startVec)
 
-    limit = bpy.context.scene.vamp_params.vamp_trace_limit
-    trace_curve_type = bpy.context.scene.vamp_params.vamp_trace_curve_enum    
-    scope=min(limit,len(inputVecs))
+        limit = bpy.context.scene.vamp_params.vamp_trace_limit
+        scope=min(limit,len(inputVecs))
 
-    for i in range (scope):
-        size = len(inputVecs)
-        sizeOut = len(outputVecs)
-        #testVec=inputVecs[size-1]
-        testVec=outputVecs[sizeOut-1]
-        kd = mathutils.kdtree.KDTree(size)
-        for i, v in enumerate(inputVecs):
-            kd.insert(v, i)
-        kd.balance()
-        nearVec=kd.find_n(testVec,1)
-        
-        inputVecs.remove(nearVec[0][0])
-        outputVecs.append(nearVec[0][0])       
+        for i in range (scope):
+            size = len(inputVecs)
+            sizeOut = len(outputVecs)
+            #testVec=inputVecs[size-1]
+            testVec=outputVecs[sizeOut-1]
+            kd = mathutils.kdtree.KDTree(size)
+            for i, v in enumerate(inputVecs):
+                kd.insert(v, i)
+            kd.balance()
+            nearVec=kd.find_n(testVec,1)
+            
+            inputVecs.remove(nearVec[0][0])
+            outputVecs.append(nearVec[0][0])
+        use_cyclic_curves = False  # Other modes don't auto-close
     
     #create 4-element point/weigh variables from vectors
     points=[]
@@ -1024,20 +1495,93 @@ def main_trace_routine():
     cu = bpy.data.curves.new("finalCurve", "CURVE")
     cu.dimensions = "3D"
     
+    trace_curve_type = bpy.context.scene.vamp_params.vamp_trace_curve_enum    
     if(trace_curve_type == 'Bezier'):
-        makeSpline(cu, "BEZIER", points )
+        makeSpline(cu, "BEZIER", points, use_cyclic_curves)
+    elif(trace_curve_type == 'Poly'):
+        makeSpline(cu, "POLY", points, use_cyclic_curves)
+    elif(trace_curve_type == 'NUPO'):
+        # NUPO: Create NURBS curve, then resample to high-res mesh
+        makeSpline(cu, "NURBS", points, use_cyclic_curves)
     else:
-        makeSpline(cu, "NURBS", points )
+        makeSpline(cu, "NURBS", points, use_cyclic_curves)
     #now simplify the curve:
     #cu = cu.decimate(ratio=0.5)# decimate only works as .ops. in edit context...
     
     #put new data block into existing curve object
     bpy.data.objects['_traceFinal'].data = cu 
     
+    # Position traceFinal at FSCV location for FSCV mode
+    if trace_mode == 'FSCV':
+        fscv_obj = bpy.data.objects.get('_flatSilhouetteCameraView')
+        if fscv_obj:
+            bpy.data.objects['_traceFinal'].location = fscv_obj.location
+            bpy.data.objects['_traceFinal'].rotation_euler = fscv_obj.rotation_euler
+            bpy.data.objects['_traceFinal'].scale = fscv_obj.scale
+    
     #make mesh version too...
-    trace_mesh=get_eval_mesh(bpy.data.objects['_traceFinal'])
-    trace_mesh.name = 'traceFinalMesh'
-    bpy.data.objects['_traceFinalMesh'].data = trace_mesh   
+    if trace_curve_type == 'NUPO':
+        # NUPO: Subdivide NURBS curve segments for mesh conversion
+        nupo_subdivs = bpy.context.scene.vamp_params.vamp_nupo_subdivs
+        
+        # Set curve resolution for evaluation (modify the curve data directly)
+        original_resolution = cu.resolution_u
+        cu.resolution_u = nupo_subdivs
+        
+        # Create temporary curve object for evaluation
+        temp_curve_obj = bpy.data.objects.new('temp_curve_nupo', cu)
+        bpy.context.scene.collection.objects.link(temp_curve_obj)
+        
+        # Force depsgraph update
+        bpy.context.view_layer.update()
+        
+        # Convert curve to mesh using Blender's built-in conversion
+        temp_mesh_data = bpy.data.meshes.new_from_object(temp_curve_obj)
+        temp_mesh_data.name = 'traceFinalMesh_NUPO'
+        
+        # Store old mesh data for cleanup
+        old_mesh_data = bpy.data.objects['_traceFinalMesh'].data
+        
+        # Get the traceFinalMesh object
+        trace_mesh_obj = bpy.data.objects['_traceFinalMesh']
+        
+        # Ensure object is in object mode and deselected
+        if bpy.context.active_object == trace_mesh_obj:
+            bpy.context.view_layer.objects.active = None
+        trace_mesh_obj.select_set(False)
+        
+        # Replace mesh data only for _traceFinalMesh (leave _traceFinal as curve)
+        trace_mesh_obj.data = temp_mesh_data
+        
+        # Force object mode and update
+        if bpy.context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        
+        # Update view layer and scene
+        bpy.context.view_layer.update()
+        
+        # Clean up temp object first
+        bpy.context.scene.collection.objects.unlink(temp_curve_obj)
+        bpy.data.objects.remove(temp_curve_obj)
+        
+        # Clean up old mesh data if it's different and has no users
+        if old_mesh_data != temp_mesh_data and old_mesh_data.users == 0:
+            bpy.data.meshes.remove(old_mesh_data, do_unlink=True)
+        
+        # Restore original curve resolution to avoid affecting future operations
+        cu.resolution_u = original_resolution
+    else:
+        # Standard mesh conversion for other curve types
+        trace_mesh=get_eval_mesh(bpy.data.objects['_traceFinal'])
+        trace_mesh.name = 'traceFinalMesh'
+        bpy.data.objects['_traceFinalMesh'].data = trace_mesh   
+    
+    # Position traceFinalMesh at same location as traceFinal
+    if trace_mode == 'FSCV':
+        bpy.data.objects['_traceFinalMesh'].location = bpy.data.objects['_traceFinal'].location
+        bpy.data.objects['_traceFinalMesh'].rotation_euler = bpy.data.objects['_traceFinal'].rotation_euler
+        bpy.data.objects['_traceFinalMesh'].scale = bpy.data.objects['_traceFinal'].scale
+    
     #print('trace_mesh is ',trace_mesh)
     print('======== trace done. ',len(points),' vectors plotted..')         
     return {'FINISHED'}
@@ -1143,7 +1687,7 @@ class OBJECT_OT_reloadme(bpy.types.Operator):
     bl_idname = "render.vamp_reloadme"
     bl_description = "Reload VAMP Script"           
     def execute(self, context):  
-        module_name = "vamp_293"   
+        module_name = __name__   # derived, so a future rename can't break this
         mod = sys.modules.get(module_name)
         importlib.reload(mod)  
         re_reg_handler()
@@ -1213,7 +1757,12 @@ class Vamp_PT_Panel(bpy.types.Panel):
         row = layout.row(align=True)
         row.prop(vampparams, "vamp_denoise_pass")
         row.prop(vampparams, "vamp_denoise_thresh")
-        row.prop(vampparams, "vamp_denoise_pct")   
+        row.prop(vampparams, "vamp_denoise_pct")
+        
+        row = layout.row(align=True)
+        row.prop(vampparams, "vamp_fill_gaps")
+        row.prop(vampparams, "vamp_gap_threshold")
+        row.prop(vampparams, "vamp_max_gap_distance")   
 
         #new TRACE options
         row = layout.row()
@@ -1233,6 +1782,10 @@ class Vamp_PT_Panel(bpy.types.Panel):
         row = layout.row(align=True)        
         row.prop(vampparams, "vamp_trace_enum")
         row.prop(vampparams, "vamp_trace_curve_enum")
+        
+        # Show NUPO subdivs control only when NUPO is selected
+        if vampparams.vamp_trace_curve_enum == 'NUPO':
+            layout.prop(vampparams, "vamp_nupo_subdivs")
         
         layout.separator()
         # reload this script, re-register app handler
@@ -1271,17 +1824,21 @@ def re_reg_handler():
     #avoiding dup handlers:
     #  https://blender.stackexchange.com/questions/146837/how-do-i-properly-update-an-application-handler 
     
-    handler_key = 'VAMP_293_KEY'
+    handler_key = 'VAMP_KEY'
+    # 'VAMP_293_KEY' was the key used through v1.2.0, when this add-on was named vamp_293.
+    # Clear it too, so a leftover older copy doesn't process every frame alongside this one.
+    legacy_keys = ['VAMP_293_KEY']
     
     old_vamp_handlers = [h for h in bpy.app.handlers.frame_change_pre
-        if h.__name__ == handler_key]
+        if h.__name__ in [handler_key] + legacy_keys]
     for v in old_vamp_handlers:
-        bpy.app.handlers.frame_change_pre.remove(f)         
+        bpy.app.handlers.frame_change_pre.remove(v)         
     
-    if handler_key in driver_namespace:
-        if driver_namespace[handler_key] in frame_change_pre:
-            frame_change_pre.remove(driver_namespace[handler_key])
-        del driver_namespace[handler_key]
+    for key in [handler_key] + legacy_keys:
+        if key in driver_namespace:
+            if driver_namespace[key] in frame_change_pre:
+                frame_change_pre.remove(driver_namespace[key])
+            del driver_namespace[key]
     bpy.app.handlers.frame_change_pre.append(vamp_handler) 
     driver_namespace[handler_key] = vamp_handler
 
